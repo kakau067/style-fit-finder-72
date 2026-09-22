@@ -178,7 +178,7 @@ export const PRODUCTS: Product[] = [
     colorHex: "#B4614A",
     fabric: "Linho europeu",
     silhouette: "Saia evasê que afasta do quadril sem volume.",
-    styles: ["romantico", "descontraido", "praia" as never],
+    styles: ["romantico", "descontraido"],
     occasions: ["praia", "encontro", "viagem", "festa"],
     flatters: ["triangle", "inverted", "ampulheta", "oval"],
     fit: {

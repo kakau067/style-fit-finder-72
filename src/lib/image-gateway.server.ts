@@ -88,7 +88,10 @@ export async function editImage(
  * read. Only same-origin asset paths and data URLs are accepted, so this route
  * can never be pointed at an arbitrary host.
  */
-export async function garmentFileFromReference(reference: string): Promise<File> {
+export async function garmentFileFromReference(
+  reference: string,
+  origin: string,
+): Promise<File> {
   if (reference.startsWith("data:image/")) {
     const [meta, base64] = reference.split(",");
     const mime = meta.match(/data:([^;]+)/)?.[1] ?? "image/jpeg";
@@ -103,9 +106,7 @@ export async function garmentFileFromReference(reference: string): Promise<File>
     throw new Error("Referência de peça inválida.");
   }
 
-  const asset = await fetch(`https://placeholder.invalid${reference}`.replace("https://placeholder.invalid", ""), {
-    cache: "force-cache",
-  }).catch(() => null);
+  const asset = await fetch(`${origin}${reference}`, { cache: "force-cache" }).catch(() => null);
   if (!asset || !asset.ok) throw new Error("Não foi possível carregar a imagem da peça.");
 
   const blob = await asset.blob();

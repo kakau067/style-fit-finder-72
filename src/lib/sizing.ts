@@ -122,7 +122,7 @@ export function recommendSize(
   if (scored.length === 0) return null;
   scored.sort((a, b) => a.score - b.score);
 
-  const best = scored[0];
+  const best = scored[0]!;
   const second = scored[1];
 
   const confidence = clamp(

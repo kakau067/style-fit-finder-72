@@ -52,7 +52,7 @@ export async function fileToPreviewURL(file: File, maxSide = 520): Promise<strin
 
 /** Turns a data URL back into a File so it can travel as a multipart part. */
 export function dataURLToFile(dataUrl: string, filename: string): File {
-  const [meta, base64] = dataUrl.split(",");
+  const [meta = "", base64 = ""] = dataUrl.split(",");
   const mime = meta.match(/data:([^;]+)/)?.[1] ?? "image/jpeg";
   const binary = atob(base64);
   const bytes = new Uint8Array(binary.length);

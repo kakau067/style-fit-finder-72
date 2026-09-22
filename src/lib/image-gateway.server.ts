@@ -93,7 +93,7 @@ export async function garmentFileFromReference(
   origin: string,
 ): Promise<File> {
   if (reference.startsWith("data:image/")) {
-    const [meta, base64] = reference.split(",");
+    const [meta = "", base64 = ""] = reference.split(",");
     const mime = meta.match(/data:([^;]+)/)?.[1] ?? "image/jpeg";
     const binary = atob(base64);
     const bytes = new Uint8Array(binary.length);

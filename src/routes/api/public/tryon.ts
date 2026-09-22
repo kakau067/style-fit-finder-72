@@ -1,8 +1,35 @@
 import { createFileRoute } from "@tanstack/react-router";
+import { createClient } from "@supabase/supabase-js";
 
-import { PRODUCT_BY_ID } from "@/data/catalog";
+import { PRODUCT_BY_ID, type Product } from "@/data/catalog";
+import type { Database } from "@/integrations/supabase/types";
 import { editImage, garmentFileFromReference, imageSettings } from "@/lib/image-gateway.server";
+import { productImageUrl, rowToProduct } from "@/lib/products.shared";
 import { SIZES, type FitPref, type Size } from "@/lib/sizing";
+
+/** Products now live in the database; the bundled catalog is only a fallback. */
+async function findProduct(id: string): Promise<Product | null> {
+  const key = process.env["SUPABASE_PUBLISHABLE_KEY"];
+  const url = process.env["SUPABASE_URL"];
+  if (key && url) {
+    const client = createClient<Database>(url, key, {
+      auth: { persistSession: false },
+      global: {
+        fetch: (input, init) => {
+          const headers = new Headers(init?.headers);
+          if (key.startsWith("sb_") && headers.get("Authorization") === `Bearer ${key}`) {
+            headers.delete("Authorization");
+          }
+          headers.set("apikey", key);
+          return fetch(input, { ...init, headers });
+        },
+      },
+    });
+    const { data } = await client.from("products").select("*").eq("slug", id).maybeSingle();
+    if (data) return rowToProduct(data);
+  }
+  return PRODUCT_BY_ID.get(id) ?? null;
+}
 
 const MAX_PHOTO_BYTES = 8 * 1024 * 1024;
 
@@ -55,7 +82,7 @@ export const Route = createFileRoute("/api/public/tryon")({
         if (typeof productId !== "string") {
           return new Response("Peça não informada", { status: 400 });
         }
-        const product = PRODUCT_BY_ID.get(productId);
+        const product = await findProduct(productId);
         if (!product) return new Response("Peça desconhecida", { status: 404 });
         if (typeof size !== "string" || !(SIZES as readonly string[]).includes(size)) {
           return new Response("Tamanho inválido", { status: 400 });

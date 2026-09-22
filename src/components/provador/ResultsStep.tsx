@@ -111,7 +111,7 @@ export function ResultsStep({
                 {fit.notes.length ? (
                   <ul className="space-y-1 text-xs text-muted-foreground">
                     {fit.notes.map((note) => (
-                      <li key={note} className="rule-tick pl-3">
+                      <li key={note} className="border-l border-line pl-2">
                         {note}
                       </li>
                     ))}

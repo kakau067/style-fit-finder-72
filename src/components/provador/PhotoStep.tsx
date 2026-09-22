@@ -151,9 +151,15 @@ export function PhotoStep({ onDone }: { onDone: (result: PhotoResult) => void })
           ))}
         </div>
         <ul className="space-y-2 text-sm text-secondary-foreground">
-          <li className="rule-tick pl-4">Tamanho calculado peça a peça, pela tabela de medidas.</li>
-          <li className="rule-tick pl-4">Recomendações por estilo, ocasião, cor e orçamento.</li>
-          <li className="rule-tick pl-4">Prova visual da peça no seu corpo, gerada na hora.</li>
+          <li className="border-l-2 border-primary/40 pl-3">
+            Tamanho calculado peça a peça, pela tabela de medidas.
+          </li>
+          <li className="border-l-2 border-primary/40 pl-3">
+            Recomendações por estilo, ocasião, cor e orçamento.
+          </li>
+          <li className="border-l-2 border-primary/40 pl-3">
+            Prova visual da peça no seu corpo, gerada na hora.
+          </li>
         </ul>
       </div>
     </div>

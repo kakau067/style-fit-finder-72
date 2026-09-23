@@ -182,7 +182,7 @@ function Index() {
             caimento.
           </span>
           <Link
-            to="/admin"
+            to="/admin-lojista"
             className="focus-clay rounded-full font-mono text-[11px] uppercase tracking-[0.2em] text-secondary-foreground underline underline-offset-4"
           >
             Área do lojista

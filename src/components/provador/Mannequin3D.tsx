@@ -157,7 +157,7 @@ export function Mannequin3D({ body, audience = "feminino" }: { body: Body; audie
     scene.background = new THREE.Color(0xf4f5f7);
 
     const camera = new THREE.PerspectiveCamera(28, 1, 0.1, 10);
-    camera.position.set(0, 0.92, 3.15);
+    camera.position.set(0, 0.92, 4.35);
 
     const renderer = new THREE.WebGLRenderer({
       canvas,

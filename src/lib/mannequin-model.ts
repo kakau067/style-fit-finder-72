@@ -38,8 +38,9 @@ function fitStaticMesh(
   body: Body,
   base: typeof BASE,
 ) {
-  // Never change a rigged model or a model whose artist supplied morph targets.
-  if (mesh.isSkinnedMesh || mesh.morphTargetInfluences?.length || !mesh.geometry.getAttribute("position")) return;
+  // Edit a private copy of the base surface. Artist morph targets remain intact
+  // and still control bust, waist, hips and shoulders independently.
+  if (mesh.isSkinnedMesh || !mesh.geometry.getAttribute("position")) return;
   if (!mesh.userData.mannequinOriginalPositions) {
     const source = mesh.geometry.getAttribute("position") as THREE.BufferAttribute;
     const vertices = new Float32Array(source.count * 3);
@@ -62,6 +63,11 @@ function fitStaticMesh(
   const chest = THREE.MathUtils.clamp(body.chestCm / base.chestCm, 0.76, 1.25);
   const waist = THREE.MathUtils.clamp(body.waistCm / base.waistCm, 0.76, 1.25);
   const hips = THREE.MathUtils.clamp(body.hipsCm / base.hipsCm, 0.76, 1.25);
+  const inseam = THREE.MathUtils.clamp(body.inseamCm / base.inseamCm, 0.78, 1.22);
+  const weight = THREE.MathUtils.clamp(body.weightKg / (65 * (body.heightCm / 167) ** 2), 0.75, 1.3);
+  const hipHeight = height * 0.47;
+  const newHipHeight = hipHeight * inseam;
+  const width = bounds.getSize(new THREE.Vector3()).x;
 
   for (let i = 0; i < target.count; i++) {
     point.fromArray(original, i * 3).applyMatrix4(toModel);
@@ -69,9 +75,14 @@ function fitStaticMesh(
     const a = peak(y, 0.74, 0.18);
     const b = peak(y, 0.56, 0.13);
     const c = peak(y, 0.46, 0.15);
-    const ratio = 1 + ((chest - 1) * a + (waist - 1) * b + (hips - 1) * c) / Math.max(1, a + b + c);
+    const limb = y < 0.4 || Math.abs(point.x - center.x) > width * 0.27 ? 0.28 : 0;
+    const ratio = 1 + ((chest - 1) * a + (waist - 1) * b + (hips - 1) * c) / Math.max(1, a + b + c) + (weight - 1) * limb;
     point.x = center.x + (point.x - center.x) * ratio;
     point.z = center.z + (point.z - center.z) * ratio;
+    const fromGround = point.y - bounds.min.y;
+    point.y = bounds.min.y + (fromGround < hipHeight
+      ? fromGround * inseam
+      : newHipHeight + (fromGround - hipHeight) * ((height - newHipHeight) / (height - hipHeight)));
     point.applyMatrix4(toMesh);
     target.setXYZ(i, point.x, point.y, point.z);
   }

@@ -4,6 +4,7 @@ import { createClient } from "@supabase/supabase-js";
 import { PRODUCT_BY_ID, type Product } from "@/data/catalog";
 import type { Database } from "@/integrations/supabase/types";
 import { editImage, garmentFileFromReference, imageSettings } from "@/lib/image-gateway.server";
+import { pollFalTryOn, submitFalTryOn, validTryOnRequest } from "@/lib/fal-tryon.server";
 import { rowToProduct } from "@/lib/products.shared";
 import { SIZES, type FitPref } from "@/lib/sizing";
 
@@ -44,9 +45,65 @@ async function dataUrlFromFile(file: File): Promise<string> {
   return `data:${file.type || "image/jpeg"};base64,${btoa(binary)}`;
 }
 
+function streamGatewayTryOn(key: string, edit: FormData): Response {
+  const encoder = new TextEncoder();
+  const stream = new ReadableStream<Uint8Array>({
+    start(controller) {
+      void (async () => {
+      let closed = false;
+      const emit = (chunk: Uint8Array) => { if (!closed) { try { controller.enqueue(chunk); } catch { closed = true; } } };
+      const keepAlive = setInterval(() => emit(encoder.encode(": aguardando a imagem\n\n")), 10_000);
+      const failure = (message: string) => emit(encoder.encode(
+        `event: error\ndata: ${JSON.stringify({ type: "error", error: { message } })}\n\n`,
+      ));
+      try {
+        emit(encoder.encode(": prova iniciada\n\n"));
+        const upstream = await editImage({ ...imageSettings, apiKey: key }, edit, AbortSignal.timeout(180_000));
+        if (!upstream.ok) {
+          failure(`Serviço de prova visual respondeu ${upstream.status}: ${(await upstream.text().catch(() => "")).slice(0, 250)}`);
+        } else if (upstream.headers.get("content-type")?.includes("text/event-stream") && upstream.body) {
+          const reader = upstream.body.getReader();
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            emit(value);
+          }
+        } else {
+          const result = (await upstream.json()) as { data?: Array<{ b64_json?: string }> };
+          const base64 = result.data?.[0]?.b64_json;
+          if (!base64) throw new Error("O serviço não retornou uma imagem de prova.");
+          emit(encoder.encode(`event: image_edit.completed\ndata: ${JSON.stringify({ type: "image_edit.completed", b64_json: base64 })}\n\n`));
+        }
+      } catch (cause) {
+        failure(cause instanceof Error ? cause.message : "A geração foi interrompida.");
+      } finally {
+        clearInterval(keepAlive);
+        if (!closed) controller.close();
+      }
+      })();
+    },
+  });
+  return new Response(stream, {
+    headers: { "Content-Type": "text/event-stream", "Cache-Control": "no-cache, no-transform", "X-Accel-Buffering": "no" },
+  });
+}
+
 export const Route = createFileRoute("/api/public/tryon")({
   server: {
     handlers: {
+      GET: async ({ request }) => {
+        const key = process.env["FAL_KEY"];
+        const params = new URL(request.url).searchParams;
+        if (params.has("health")) return Response.json({ provider: key ? "fal_queue" : process.env["LOVABLE_API_KEY"] ? "lovable_stream" : "none" });
+        const id = params.get("requestId") ?? "";
+        const ticket = params.get("ticket") ?? "";
+        if (!key || !validTryOnRequest(id, ticket, key)) return new Response("Prova não encontrada", { status: 404 });
+        try {
+          return Response.json(await pollFalTryOn(key, id), { headers: { "Cache-Control": "no-store" } });
+        } catch (cause) {
+          return new Response(cause instanceof Error ? cause.message : "Falha ao acompanhar a prova.", { status: 502 });
+        }
+      },
       POST: async ({ request }) => {
         const apiKey = process.env["FAL_KEY"];
         const gatewayKey = process.env["LOVABLE_API_KEY"];
@@ -71,49 +128,25 @@ export const Route = createFileRoute("/api/public/tryon")({
 
         try {
           const garment = await garmentFileFromReference(product.images.front, new URL(request.url).origin);
-          let base64: string;
           if (apiKey) {
             const [humanImageUrl, garmentImageUrl] = await Promise.all([
               dataUrlFromFile(photo), dataUrlFromFile(garment),
             ]);
-            const falResponse = await fetch("https://fal.run/fal-ai/idm-vton", {
-            method: "POST",
-            headers: {
-              Authorization: `Key ${apiKey}`,
-              "Content-Type": "application/json",
-            },
-            body: JSON.stringify({
+            const queued = await submitFalTryOn(apiKey, {
               human_image_url: humanImageUrl,
               garment_image_url: garmentImageUrl,
               description: `${product.name}, ${product.colorName}, ${product.fabric}. ${product.silhouette}. Tamanho ${size}, caimento ${FIT_WORDING[fitPref]}.`,
               num_inference_steps: 30,
-            }),
-              signal: AbortSignal.timeout(55_000),
             });
-            if (!falResponse.ok) throw new Error(`Serviço de prova visual respondeu ${falResponse.status}. Tente novamente.`);
-            const result = (await falResponse.json()) as { image?: { url?: string } };
-            const imageUrl = result.image?.url;
-            if (!imageUrl) throw new Error("O serviço não retornou uma imagem de prova.");
-            const imageResponse = await fetch(imageUrl, { signal: AbortSignal.timeout(15_000) });
-            if (!imageResponse.ok) throw new Error("Não foi possível carregar a imagem gerada.");
-            const imageFile = new File([await imageResponse.arrayBuffer()], "tryon.png", { type: imageResponse.headers.get("content-type") ?? "image/png" });
-            base64 = (await dataUrlFromFile(imageFile)).split(",")[1] ?? "";
+            return Response.json({ provider: "fal_queue", ...queued }, { status: 202, headers: { "Cache-Control": "no-store" } });
           } else {
             const edit = new FormData();
             edit.set("image[]", photo);
             edit.append("image[]", garment);
-            edit.set("stream", "false");
+            edit.set("stream", "true");
             edit.set("prompt", `Edite somente a peça de roupa na foto da pessoa usando a segunda imagem como referência: ${product.name}, ${product.colorName}, ${product.fabric}. Preserve exatamente rosto, cabelo, pose, corpo, fundo e todas as outras roupas. Caimento ${FIT_WORDING[fitPref]}.`);
-            const response = await editImage({ ...imageSettings, apiKey: gatewayKey! }, edit, AbortSignal.timeout(55_000));
-            if (!response.ok) throw new Error(`Serviço de prova visual respondeu ${response.status}. Tente novamente.`);
-            const result = (await response.json()) as { data?: Array<{ b64_json?: string }> };
-            base64 = result.data?.[0]?.b64_json ?? "";
-            if (!base64) throw new Error("O serviço não retornou uma imagem de prova.");
+            return streamGatewayTryOn(gatewayKey!, edit);
           }
-          const payload = JSON.stringify({ type: "image_edit.completed", b64_json: base64 });
-          return new Response(`event: image_edit.completed\ndata: ${payload}\n\n`, {
-            headers: { "Content-Type": "text/event-stream", "Cache-Control": "no-cache, no-transform", Connection: "keep-alive" },
-          });
         } catch (error) {
           const timeout = error instanceof Error && (error.name === "TimeoutError" || error.name === "AbortError");
           return new Response(timeout ? "A geração demorou além do limite. Tente novamente em instantes." : error instanceof Error ? error.message : "Falha na prova visual.", { status: timeout ? 504 : 502 });

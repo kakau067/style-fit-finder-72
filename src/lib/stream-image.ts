@@ -16,6 +16,8 @@ export async function streamImage(
   onFrame: (dataUrl: string, isFinal: boolean) => void,
   signal?: AbortSignal,
   headers?: HeadersInit,
+  replayOnEmpty = true,
+  existingResponse?: Response,
 ): Promise<void> {
   const send = (stream: boolean) => {
     signal?.throwIfAborted();
@@ -37,7 +39,7 @@ export async function streamImage(
     return fetch(endpoint, { method: "POST", headers: requestHeaders, body, signal: signal ?? null });
   };
 
-  const res = await send(true);
+  const res = existingResponse ?? await send(true);
   if (!res.ok || !res.body) {
     throw new Error(`Falha na prova visual: ${res.status} ${await res.text().catch(() => "")}`);
   }
@@ -101,6 +103,7 @@ export async function streamImage(
   if (streamError) throw new Error(streamError);
 
   if (!sawAnyEvent) {
+    if (!replayOnEmpty) throw new Error("A geração terminou sem retornar a imagem. Tente novamente.");
     const replay = await send(false);
     if (!replay.ok) {
       throw new Error(`Falha na prova visual: ${replay.status} ${await replay.text().catch(() => "")}`);

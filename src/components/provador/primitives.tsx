@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 
 import { cn } from "@/lib/utils";
 
@@ -93,6 +93,7 @@ export function MeasureField({
   min,
   max,
   step = 0.5,
+  unit = "cm",
   onChange,
   estimated,
 }: {
@@ -101,17 +102,31 @@ export function MeasureField({
   min: number;
   max: number;
   step?: number;
+  unit?: string;
   onChange: (value: number) => void;
   estimated?: boolean;
 }) {
+  const [draft, setDraft] = useState(String(value));
+  useEffect(() => setDraft(String(value)), [value]);
   return (
     <div className="rounded-lg border border-line bg-background px-3 py-2.5">
       <div className="flex items-baseline justify-between gap-2">
         <span className="text-sm text-secondary-foreground">{label}</span>
-        <span className="font-mono text-sm tabular-nums text-foreground">
-          {value.toFixed(step < 1 ? 1 : 0)}
-          <span className="text-muted-foreground"> cm</span>
-        </span>
+        <label className="flex items-center gap-1 font-mono text-sm tabular-nums text-foreground">
+          <input type="number" aria-label={`${label} em ${unit}`} min={min} max={max} step={step}
+            value={draft} onChange={(event) => {
+              const text = event.target.value;
+              setDraft(text);
+              const next = Number(text);
+              if (text !== "" && Number.isFinite(next) && next >= min && next <= max) onChange(next);
+            }} onBlur={() => {
+              const next = Number(draft);
+              const corrected = draft.trim() && Number.isFinite(next) ? Math.min(max, Math.max(min, next)) : value;
+              onChange(corrected);
+              setDraft(String(corrected));
+            }} className="w-16 rounded border border-line bg-background px-1 text-right focus-clay" />
+          <span className="text-muted-foreground">{unit}</span>
+        </label>
       </div>
       <input
         type="range"

@@ -63,7 +63,7 @@ export function ProfileStep({
 
         <div className="measure-tape mt-5 grid gap-3 sm:grid-cols-2">
           <MeasureField label="Altura" value={body.heightCm} min={130} max={215} step={1} estimated={estimated} onChange={(v) => set("heightCm", v)} />
-          <MeasureField label="Peso (kg)" value={body.weightKg} min={35} max={200} step={1} estimated={estimated} onChange={(v) => set("weightKg", v)} />
+          <MeasureField label="Peso" unit="kg" value={body.weightKg} min={35} max={200} step={1} estimated={estimated} onChange={(v) => set("weightKg", v)} />
           <MeasureField label="Busto" value={body.chestCm} min={65} max={150} estimated={estimated} onChange={(v) => set("chestCm", v)} />
           <MeasureField label="Cintura" value={body.waistCm} min={55} max={150} estimated={estimated} onChange={(v) => set("waistCm", v)} />
           <MeasureField label="Quadril" value={body.hipsCm} min={65} max={160} estimated={estimated} onChange={(v) => set("hipsCm", v)} />

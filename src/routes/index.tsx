@@ -1,4 +1,6 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
+import { useServerFn } from "@tanstack/react-start";
+import { useQuery } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 
 import { PhotoStep, type PhotoResult } from "@/components/provador/PhotoStep";
@@ -6,7 +8,8 @@ import { ProfileStep, type Profile } from "@/components/provador/ProfileStep";
 import { ResultsStep } from "@/components/provador/ResultsStep";
 import { TryOnOverlay, type TryOnRequest } from "@/components/provador/TryOnOverlay";
 import { Eyebrow, StepRail } from "@/components/provador/primitives";
-import { PRODUCTS, PRODUCT_BY_ID, audienceMatches, type Product } from "@/data/catalog";
+import { PRODUCTS, audienceMatches, type Product } from "@/data/catalog";
+import { listProducts } from "@/lib/products.functions";
 import {
   rankProducts,
   recommendSize,
@@ -65,9 +68,20 @@ function Index() {
   const [photo, setPhoto] = useState<PhotoResult | null>(null);
   const [tryOn, setTryOn] = useState<TryOnRequest | null>(null);
 
+  const fetchProducts = useServerFn(listProducts);
+  const catalogQuery = useQuery({ queryKey: ["products"], queryFn: () => fetchProducts() });
+
+  // While the store catalog loads (or if it is unreachable), the bundled demo
+  // catalog keeps the fitting room usable.
+  const catalog = catalogQuery.data?.length ? catalogQuery.data : PRODUCTS;
+  const productsById = useMemo(
+    () => new Map(catalog.map((product) => [product.id, product])),
+    [catalog],
+  );
+
   const pool = useMemo(
-    () => PRODUCTS.filter((product) => audienceMatches(product, profile.audience)),
-    [profile.audience],
+    () => catalog.filter((product) => audienceMatches(product, profile.audience)),
+    [catalog, profile.audience],
   );
 
   const sizesById = useMemo(() => {
@@ -147,7 +161,7 @@ function Index() {
         {stage === 2 && photo ? (
           <ResultsStep
             ranked={ranked}
-            productsById={PRODUCT_BY_ID}
+            productsById={productsById}
             sizesById={sizesById}
             onTryOn={handleTryOn}
             onBack={() => setStage(1)}
@@ -162,9 +176,17 @@ function Index() {
       </main>
 
       <footer className="border-t border-line">
-        <div className="mx-auto max-w-6xl px-5 py-6 text-xs text-muted-foreground sm:px-8">
-          Catálogo de demonstração. As estimativas e provas visuais são geradas por IA e servem como
-          referência de caimento.
+        <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-3 px-5 py-6 text-xs text-muted-foreground sm:px-8">
+          <span>
+            As estimativas e provas visuais são geradas por IA e servem como referência de
+            caimento.
+          </span>
+          <Link
+            to="/admin"
+            className="focus-clay rounded-full font-mono text-[11px] uppercase tracking-[0.2em] text-secondary-foreground underline underline-offset-4"
+          >
+            Área do lojista
+          </Link>
         </div>
       </footer>
 

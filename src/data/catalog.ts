@@ -27,6 +27,8 @@ export type Product = {
   price: number;
   audience: Audience;
   image: string;
+  images: { front: string; back: string; detail: string };
+  storeUrl: string;
   colorName: string;
   colorHex: string;
   fabric: string;
@@ -90,6 +92,8 @@ export const PRODUCTS: Product[] = [
     price: 129,
     audience: "unissex",
     image: camisetaImage,
+    images: { front: camisetaImage, back: camisetaImage, detail: camisetaImage },
+    storeUrl: "",
     colorName: "cru",
     colorHex: "#EFE7D8",
     fabric: "Algodão pima 100%",
@@ -118,6 +122,8 @@ export const PRODUCTS: Product[] = [
     price: 249,
     audience: "unissex",
     image: camisaImage,
+    images: { front: camisaImage, back: camisaImage, detail: camisaImage },
+    storeUrl: "",
     colorName: "verde sálvia",
     colorHex: "#9BAA8E",
     fabric: "Viscose de eucalipto",
@@ -146,6 +152,8 @@ export const PRODUCTS: Product[] = [
     price: 389,
     audience: "unissex",
     image: calcaImage,
+    images: { front: calcaImage, back: calcaImage, detail: calcaImage },
+    storeUrl: "",
     colorName: "caramelo",
     colorHex: "#C08B54",
     fabric: "Lã fria com elastano",
@@ -174,6 +182,8 @@ export const PRODUCTS: Product[] = [
     price: 459,
     audience: "feminino",
     image: vestidoImage,
+    images: { front: vestidoImage, back: vestidoImage, detail: vestidoImage },
+    storeUrl: "",
     colorName: "terracota",
     colorHex: "#B4614A",
     fabric: "Linho europeu",
@@ -202,6 +212,8 @@ export const PRODUCTS: Product[] = [
     price: 649,
     audience: "unissex",
     image: blazerImage,
+    images: { front: blazerImage, back: blazerImage, detail: blazerImage },
+    storeUrl: "",
     colorName: "grafite",
     colorHex: "#3A3A3C",
     fabric: "Lã fria com viscose",
@@ -230,6 +242,8 @@ export const PRODUCTS: Product[] = [
     price: 329,
     audience: "feminino",
     image: saiaImage,
+    images: { front: saiaImage, back: saiaImage, detail: saiaImage },
+    storeUrl: "",
     colorName: "rosé queimado",
     colorHex: "#C08C88",
     fabric: "Georgette plissada",
@@ -258,6 +272,8 @@ export const PRODUCTS: Product[] = [
     price: 379,
     audience: "unissex",
     image: tricotImage,
+    images: { front: tricotImage, back: tricotImage, detail: tricotImage },
+    storeUrl: "",
     colorName: "verde oliva",
     colorHex: "#5E6B4A",
     fabric: "Malha canelada de viscose e elastano",
@@ -286,6 +302,8 @@ export const PRODUCTS: Product[] = [
     price: 429,
     audience: "unissex",
     image: jaquetaImage,
+    images: { front: jaquetaImage, back: jaquetaImage, detail: jaquetaImage },
+    storeUrl: "",
     colorName: "índigo",
     colorHex: "#4A6584",
     fabric: "Denim 100% algodão",

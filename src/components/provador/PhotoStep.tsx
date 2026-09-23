@@ -26,6 +26,7 @@ export function PhotoStep({ onDone }: { onDone: (result: PhotoResult) => void })
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [dragging, setDragging] = useState(false);
+  const [camera, setCamera] = useState(false);
 
   async function run(file: File) {
     setError(null);

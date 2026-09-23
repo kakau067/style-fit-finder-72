@@ -99,7 +99,10 @@ function emptySizes(category: Category): SizeSpec[] {
     size,
     stock: true,
     measurements: Object.fromEntries(
-      CATEGORY_MEASURES[category].map(({ key }) => [key, (base[category][key] ?? 80) + index * 6]),
+      CATEGORY_MEASURES[category].map(({ key }) => [
+        key,
+        (base[category]?.[key] ?? 80) + index * 6,
+      ]),
     ),
   }));
 }
@@ -548,7 +551,7 @@ function AdminPage() {
                   />
                 ) : draft.slug && imagePaths[draft.slug] ? (
                   <img
-                    src={productImageUrl(imagePaths[draft.slug])}
+                    src={productImageUrl(imagePaths[draft.slug] ?? "")}
                     alt="Foto atual da peça"
                     className="h-24 w-24 rounded-lg border border-line object-cover"
                   />
@@ -591,7 +594,7 @@ function AdminPage() {
                               type="number"
                               min={1}
                               className="focus-clay w-20 rounded-md border border-line bg-background px-2 py-1.5 text-sm"
-                              value={size.measurements[key] ?? ""}
+                              value={(size.measurements as Record<string, number>)[key] ?? ""}
                               onChange={(e) => {
                                 const sizes = draft.sizes.map((s, i) =>
                                   i === index

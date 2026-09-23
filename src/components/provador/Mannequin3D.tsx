@@ -108,8 +108,16 @@ export function Mannequin3D({ body }: { body: Body }) {
   const bodyRef = useRef(body);
   const rebuildRef = useRef<(() => void) | null>(null);
   const styleRef = useRef({ garment: "basico" as Garment, accessory: "nenhum" as Accessory });
-  const [garment, setGarment] = useState<Garment>("basico");
-  const [accessory, setAccessory] = useState<Accessory>("nenhum");
+  const [garment, setGarment] = useState<Garment>(() => {
+    if (typeof window === "undefined") return "basico";
+    const value = new URLSearchParams(window.location.search).get("garment");
+    return GARMENTS.some((item) => item.value === value) ? (value as Garment) : "basico";
+  });
+  const [accessory, setAccessory] = useState<Accessory>(() => {
+    if (typeof window === "undefined") return "nenhum";
+    const value = new URLSearchParams(window.location.search).get("accessory");
+    return ACCESSORIES.some((item) => item.value === value) ? (value as Accessory) : "nenhum";
+  });
   const [shared, setShared] = useState(false);
 
   bodyRef.current = body;
@@ -493,7 +501,12 @@ export function Mannequin3D({ body }: { body: Body }) {
     const shareData = {
       title: "Meu visual no Provador Virtual",
       text: "Confira meu visual personalizado no Provador Virtual.",
-      url: window.location.href,
+      url: (() => {
+        const url = new URL(window.location.href);
+        url.searchParams.set("garment", garment);
+        url.searchParams.set("accessory", accessory);
+        return url.toString();
+      })(),
     };
 
     try {

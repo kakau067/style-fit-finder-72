@@ -146,6 +146,17 @@ export function PhotoStep({ onDone }: { onDone: (result: PhotoResult) => void })
         </p>
       </Panel>
 
+      {camera ? (
+        <CameraCapture
+          onClose={() => setCamera(false)}
+          onCapture={(file) => {
+            setCamera(false);
+            void run(file);
+          }}
+        />
+      ) : null}
+
+
       <div className="space-y-4">
         <Eyebrow>No provador hoje</Eyebrow>
         <div className="grid grid-cols-3 gap-3">

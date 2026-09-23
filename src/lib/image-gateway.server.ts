@@ -106,6 +106,46 @@ export async function garmentFileFromReference(
     throw new Error("Referência de peça inválida.");
   }
 
+  // Product photos are stored in a private Supabase bucket and normally exposed
+  // to the browser through /api/public/product-image/*. On the server, avoid a
+  // self-request to that route: download the object directly with the service
+  // role instead. This also works on deployments where the public origin cannot
+  // resolve back to the running server.
+  const productImagePrefix = "/api/public/product-image/";
+  if (reference.startsWith(productImagePrefix)) {
+    const rawPath = reference.slice(productImagePrefix.length);
+    const storagePath = rawPath
+      .split("/")
+      .filter(Boolean)
+      .map((segment) => decodeURIComponent(segment))
+      .join("/");
+
+    if (!/^[a-zA-Z0-9][a-zA-Z0-9/_-]*\.[a-zA-Z0-9]+$/.test(storagePath) || storagePath.includes("..")) {
+      throw new Error("Referência de peça inválida.");
+    }
+
+    try {
+      const { PRODUCT_IMAGE_BUCKET } = await import("@/lib/products.shared");
+      const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+      const { data, error } = await supabaseAdmin.storage
+        .from(PRODUCT_IMAGE_BUCKET)
+        .download(storagePath);
+
+      if (error || !data) {
+        throw new Error("Imagem não encontrada no catálogo.");
+      }
+
+      return new File([data], "garment", {
+        type: data.type || "image/jpeg",
+      });
+    } catch (error) {
+      if (error instanceof Error && error.message !== "Imagem não encontrada no catálogo.") {
+        throw new Error(`Não foi possível acessar a imagem da peça: ${error.message}`);
+      }
+      throw error;
+    }
+  }
+
   const asset = await fetch(`${origin}${reference}`, { cache: "force-cache" }).catch(() => null);
   if (!asset || !asset.ok) throw new Error("Não foi possível carregar a imagem da peça.");
 

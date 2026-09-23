@@ -2,6 +2,8 @@ import { useEffect, useRef, useState } from "react";
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 
+import { getMannequinModelSource, loadMannequinModel, prepareMannequinModel } from "@/lib/mannequin-model";
+
 import type { Body } from "@/lib/sizing";
 
 type Garment = "basico" | "camisa" | "blazer" | "vestido" | "calca";
@@ -119,6 +121,7 @@ export function Mannequin3D({ body }: { body: Body }) {
     return ACCESSORIES.some((item) => item.value === value) ? (value as Accessory) : "nenhum";
   });
   const [shared, setShared] = useState(false);
+  const [externalModelLoaded, setExternalModelLoaded] = useState(false);
 
   bodyRef.current = body;
   styleRef.current = { garment, accessory };
@@ -187,6 +190,13 @@ export function Mannequin3D({ body }: { body: Body }) {
     const mannequin = new THREE.Group();
     mannequin.rotation.y = -0.14;
     scene.add(mannequin);
+
+    const externalModelGroup = new THREE.Group();
+    externalModelGroup.visible = false;
+    mannequin.add(externalModelGroup);
+    let externalModel: THREE.Object3D | null = null;
+    let externalModelLoaded = false;
+    const modelSource = getMannequinModelSource();
 
     const skin = new THREE.MeshPhysicalMaterial({
       color: 0xc69d82,
@@ -366,6 +376,20 @@ export function Mannequin3D({ body }: { body: Body }) {
 
     const rebuild = () => {
       const current = bodyRef.current;
+
+      if (externalModel && externalModelLoaded) {
+        prepareMannequinModel(externalModel, current);
+        const modelBounds = new THREE.Box3().setFromObject(externalModel);
+        const modelHeight = Math.max(1.35, modelBounds.max.y - modelBounds.min.y);
+        camera.position.y = modelHeight * 0.54;
+        camera.position.z = Math.max(2.65, modelHeight * 1.72);
+        controls.target.set(0, modelHeight * 0.53, 0);
+        controls.update();
+        ground.scale.setScalar(Math.max(0.9, modelHeight * 0.62));
+        shadowDisc.scale.setScalar(Math.max(0.65, modelHeight * 0.38));
+        return;
+      }
+
       const model = createBodyGeometry(current);
 
       bodyMesh.geometry.dispose();
@@ -451,6 +475,41 @@ export function Mannequin3D({ body }: { body: Body }) {
     rebuildRef.current = rebuild;
     rebuild();
 
+    if (modelSource) {
+      void loadMannequinModel(modelSource)
+        .then((loadedModel) => {
+          if (stopped) {
+            disposeObject(loadedModel);
+            return;
+          }
+
+          externalModel = loadedModel;
+          externalModelGroup.add(loadedModel);
+          externalModelLoaded = true;
+          externalModelGroup.visible = true;
+
+          bodyMesh.visible = false;
+          pelvis.visible = false;
+          head.visible = false;
+          neck.visible = false;
+          hair.visible = false;
+          leftArm.visible = false;
+          rightArm.visible = false;
+          leftForearm.visible = false;
+          rightForearm.visible = false;
+          leftLeg.visible = false;
+          rightLeg.visible = false;
+          clothing.visible = false;
+          accessories.visible = false;
+
+          rebuild();
+          setExternalModelLoaded(true);
+        })
+        .catch((error) => {
+          console.warn("Não foi possível carregar o modelo 3D externo; usando o manequim de fallback.", error);
+        });
+    }
+
     const resize = () => {
       const width = canvas.clientWidth || 360;
       const height = canvas.clientHeight || 520;
@@ -530,11 +589,11 @@ export function Mannequin3D({ body }: { body: Body }) {
             Visualização 3D
           </p>
           <p className="mt-0.5 text-sm text-secondary-foreground">
-            Manequim realista ajustado às suas medidas
+            {externalModelLoaded ? "Modelo 3D ajustado às suas medidas" : "Visual 3D proporcional às suas medidas"}
           </p>
         </div>
         <span className="rounded-full border border-line bg-background/70 px-2.5 py-1 font-mono text-[10px] text-muted-foreground">
-          ao vivo
+          {externalModelLoaded ? "modelo 3D" : "fallback"}
         </span>
       </div>
 

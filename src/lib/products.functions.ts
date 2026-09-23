@@ -107,6 +107,7 @@ export const uploadMerchantPhoto = createServerFn({ method: "POST" })
   });
 
 const measurementSchema = z.record(z.string(), z.number().positive());
+const allowanceSchema = z.record(z.string(), z.number().finite().nonnegative());
 
 const sizeSpecSchema = z.object({
   size: z.enum(SIZES),
@@ -116,9 +117,10 @@ const sizeSpecSchema = z.object({
 
 const fitSchema = z.object({
   stretch: z.number().min(0).max(0.6),
-  ease: measurementSchema,
+  // A garment may have zero ease (e.g. trouser inseam); body measurements remain positive.
+  ease: allowanceSchema,
   weight: measurementSchema,
-  tolerance: measurementSchema,
+  tolerance: allowanceSchema,
 });
 
 const productInputSchema = z.object({

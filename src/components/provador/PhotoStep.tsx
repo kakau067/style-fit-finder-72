@@ -121,8 +121,11 @@ export function PhotoStep({ onDone }: { onDone: (result: PhotoResult) => void })
           />
 
           <div className="mt-5 flex flex-wrap items-center justify-center gap-3">
-            <Button onClick={() => inputRef.current?.click()} disabled={busy}>
-              {busy ? "Analisando…" : "Escolher foto"}
+            <Button onClick={() => setCamera(true)} disabled={busy}>
+              {busy ? "Analisando…" : "Tirar foto"}
+            </Button>
+            <Button variant="outline" onClick={() => inputRef.current?.click()} disabled={busy}>
+              Escolher arquivo
             </Button>
             <Button variant="outline" onClick={() => void useExample()} disabled={busy}>
               Usar foto de exemplo

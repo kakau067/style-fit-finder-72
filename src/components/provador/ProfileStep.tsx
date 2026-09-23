@@ -73,7 +73,7 @@ export function ProfileStep({
       </Panel>
 
       <div className="space-y-4 lg:sticky lg:top-6">
-        <Mannequin3D body={body} />
+        <Mannequin3D body={body} audience={profile.audience} />
         <p className="px-1 text-xs leading-relaxed text-muted-foreground">
           A forma é uma representação visual proporcional das medidas informadas. Ela não substitui a foto nem a prova virtual por IA.
         </p>

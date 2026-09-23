@@ -87,7 +87,7 @@ function AuthPage() {
         <p className="mt-2 text-sm text-muted-foreground">
           {mode === "entrar"
             ? "Entre para cadastrar peças, fotos e tabelas de medidas."
-            : "A primeira conta criada vira a administradora do catálogo."}
+            : "Crie sua loja e cadastre suas próprias peças após confirmar o e-mail."}
         </p>
 
         <form

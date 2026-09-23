@@ -1,5 +1,6 @@
 import * as THREE from "three";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
+import { MeshoptDecoder } from "three/addons/libs/meshopt_decoder.module.js";
 import type { Body } from "@/lib/sizing";
 
 export type MannequinModelMetrics = {
@@ -12,8 +13,8 @@ export type MannequinModelMetrics = {
 };
 
 // CC0 female display mannequin. An optimized, self-hosted model can override this URL.
-export const DEFAULT_MANNEQUIN_URL = "/models/female-display-mannequin.glb";
-const BASE = { heightCm: 178, chestCm: 90, waistCm: 72, hipsCm: 98, shoulderCm: 40, inseamCm: 82 };
+export const DEFAULT_MANNEQUIN_URL = "/models/parametric-body.glb";
+const BASE = { heightCm: 167, chestCm: 90, waistCm: 72, hipsCm: 98, shoulderCm: 40, inseamCm: 78 };
 const ALIASES = {
   chestCm: ["chest", "bust", "breast"],
   waistCm: ["waist", "abdomen"],
@@ -81,16 +82,32 @@ function fitStaticMesh(
 }
 
 export async function loadMannequinModel(url: string) {
-  return (await new GLTFLoader().loadAsync(url)).scene;
+  return (await new GLTFLoader().setMeshoptDecoder(MeshoptDecoder).loadAsync(url)).scene;
 }
 
-export function prepareMannequinModel(model: THREE.Object3D, body: Body) {
+function baseGeometryBounds(model: THREE.Object3D) {
+  const bounds = new THREE.Box3();
+  const point = new THREE.Vector3();
+  model.traverse((object) => {
+    const mesh = object as THREE.Mesh;
+    const positions = mesh.isMesh && mesh.geometry.getAttribute("position");
+    if (!positions) return;
+    // Box3.setFromObject includes the extrema of every morph, even inactive ones.
+    for (let i = 0; i < positions.count; i++) {
+      point.fromBufferAttribute(positions, i).applyMatrix4(mesh.matrixWorld);
+      bounds.expandByPoint(point);
+    }
+  });
+  return bounds;
+}
+
+export function prepareMannequinModel(model: THREE.Object3D, body: Body, audience: "feminino" | "masculino" = "feminino") {
   // Always measure from the original geometry: edits must not compound height.
   model.scale.setScalar(1);
   model.position.set(0, 0, 0);
   model.updateMatrixWorld(true);
   const bounds = (model.userData.mannequinSourceBounds as THREE.Box3 | undefined)
-    ?? new THREE.Box3().setFromObject(model);
+    ?? baseGeometryBounds(model);
   model.userData.mannequinSourceBounds = bounds;
   const base = { ...BASE, ...(model.userData.mannequinBaseMeasurements as MannequinModelMetrics | undefined) };
   const height = bounds.getSize(new THREE.Vector3()).y;
@@ -102,6 +119,10 @@ export function prepareMannequinModel(model: THREE.Object3D, body: Body) {
     mesh.castShadow = true;
     mesh.receiveShadow = true;
     if (mesh.morphTargetDictionary && mesh.morphTargetInfluences) {
+      for (const name of ["bodyFeminine", "bodyMasculine"]) {
+        const index = mesh.morphTargetDictionary[name];
+        if (index !== undefined) mesh.morphTargetInfluences[index] = name === (audience === "masculino" ? "bodyMasculine" : "bodyFeminine") ? 1 : 0;
+      }
       for (const [name, index] of Object.entries(mesh.morphTargetDictionary)) {
         const metric = (Object.keys(ALIASES) as MorphMetric[])
           .find((key) => ALIASES[key].some((alias) => normalize(name).includes(alias)));

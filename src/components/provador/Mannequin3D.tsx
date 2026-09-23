@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 
-import { getMannequinModelSource, loadMannequinModel, prepareMannequinModel } from "@/lib/mannequin-model";
+import { DEFAULT_MANNEQUIN_URL, getMannequinModelSource, loadMannequinModel, prepareMannequinModel } from "@/lib/mannequin-model";
 
 import type { Body } from "@/lib/sizing";
 
@@ -105,9 +105,31 @@ function addJoint(
   return mesh;
 }
 
-export function Mannequin3D({ body }: { body: Body }) {
+// The fitted body remains a single continuous surface. The garment preview follows
+// its morph targets instead of intersecting the legs with procedural cylinders.
+function makeBodyPreviewMaterial(style: { value: number; color: THREE.Color }) {
+  const material = new THREE.MeshPhysicalMaterial({
+    color: 0xd2d3d6, roughness: 0.76, metalness: 0, clearcoat: 0.025,
+  });
+  material.onBeforeCompile = (shader) => {
+    shader.uniforms.garmentMode = style;
+    shader.uniforms.garmentColor = { value: style.color };
+    shader.vertexShader = shader.vertexShader
+      .replace("#include <common>", "#include <common>\nvarying vec3 vBodyPosition;")
+      .replace("#include <morphtarget_vertex>", "#include <morphtarget_vertex>\nvBodyPosition = transformed;");
+    shader.fragmentShader = shader.fragmentShader
+      .replace("#include <common>", "#include <common>\nvarying vec3 vBodyPosition;\nuniform float garmentMode;\nuniform vec3 garmentColor;\nfloat garmentMask(vec3 p) {\n  float y = p.y / 1.667;\n  float x = abs(p.x);\n  float torso = smoothstep(.52, .53, y) * (1. - smoothstep(.865, .875, y));\n  float sleeves = smoothstep(.22, .26, x) * smoothstep(.54, .57, y) * (1. - smoothstep(.83, .87, y));\n  float top = max(torso * (1. - smoothstep(.35, .4, x)), sleeves);\n  float trousers = smoothstep(.075, .088, y) * (1. - smoothstep(.54, .56, y)) * (1. - smoothstep(.32, .37, x));\n  float dress = smoothstep(.29, .31, y) * (1. - smoothstep(.865, .875, y)) * (1. - smoothstep(.29, .35, x));\n  if (garmentMode < .5) return 0.;\n  if (garmentMode < 2.5) return top;\n  if (garmentMode < 3.5) return dress;\n  return trousers;\n}")
+      .replace("#include <color_fragment>", "#include <color_fragment>\nfloat garmentCoverage = garmentMask(vBodyPosition);\nfloat weave = sin(vBodyPosition.x * 880.) * sin(vBodyPosition.y * 910.);\ndiffuseColor.rgb = mix(diffuseColor.rgb, garmentColor * (0.96 + 0.035 * weave), garmentCoverage);")
+      .replace("#include <roughnessmap_fragment>", "#include <roughnessmap_fragment>\nroughnessFactor = mix(roughnessFactor, 0.86, garmentCoverage);");
+  };
+  material.customProgramCacheKey = () => "fitted-garment-preview-v1";
+  return material;
+}
+
+export function Mannequin3D({ body, audience = "feminino" }: { body: Body; audience?: "feminino" | "masculino" }) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const bodyRef = useRef(body);
+  const audienceRef = useRef(audience);
   const rebuildRef = useRef<(() => void) | null>(null);
   const styleRef = useRef({ garment: "basico" as Garment, accessory: "nenhum" as Accessory });
   const [garment, setGarment] = useState<Garment>(() => {
@@ -124,6 +146,7 @@ export function Mannequin3D({ body }: { body: Body }) {
   const [externalModelLoaded, setExternalModelLoaded] = useState(false);
 
   bodyRef.current = body;
+  audienceRef.current = audience;
   styleRef.current = { garment, accessory };
 
   useEffect(() => {
@@ -197,6 +220,7 @@ export function Mannequin3D({ body }: { body: Body }) {
     let externalModel: THREE.Object3D | null = null;
     let externalModelLoaded = false;
     const modelSource = getMannequinModelSource();
+    const fabricStyle = { value: 0, color: new THREE.Color(GARMENTS[0].color) };
 
     const skin = new THREE.MeshPhysicalMaterial({
       color: 0xd2d3d6,
@@ -273,6 +297,63 @@ export function Mannequin3D({ body }: { body: Body }) {
       });
       group.clear();
       materials.forEach((material) => material.dispose());
+    };
+
+    const buildFittedAccessories = (height: number) => {
+      clearGroup(accessories);
+      accessories.scale.setScalar(height / 1.667);
+      if (styleRef.current.accessory === "oculos") {
+        const frame = new THREE.MeshStandardMaterial({ color: 0x262729, metalness: 0.25, roughness: 0.42 });
+        for (const side of [-1, 1]) {
+          const rim = new THREE.Mesh(new THREE.TorusGeometry(0.038, 0.0032, 10, 48), frame);
+          rim.scale.y = 0.72;
+          rim.position.set(side * 0.043, 1.532, 0.209);
+          accessories.add(rim);
+          const temple = new THREE.Mesh(new THREE.TubeGeometry(
+            new THREE.CatmullRomCurve3([
+              new THREE.Vector3(side * 0.077, 1.534, 0.206),
+              new THREE.Vector3(side * 0.103, 1.529, 0.166),
+              new THREE.Vector3(side * 0.107, 1.52, 0.115),
+            ]), 12, 0.0025, 6, false,
+          ), frame);
+          accessories.add(temple);
+        }
+        const bridge = new THREE.Mesh(new THREE.TubeGeometry(
+          new THREE.CatmullRomCurve3([
+            new THREE.Vector3(-0.007, 1.54, 0.213),
+            new THREE.Vector3(0, 1.548, 0.218),
+            new THREE.Vector3(0.007, 1.54, 0.213),
+          ]), 8, 0.0028, 6, false,
+        ), frame);
+        accessories.add(bridge);
+      }
+      if (styleRef.current.accessory === "bolsa") {
+        const leather = new THREE.MeshPhysicalMaterial({ color: 0x684534, roughness: 0.74 });
+        const outline = new THREE.Shape();
+        outline.moveTo(-0.085, -0.095);
+        outline.lineTo(0.085, -0.095);
+        outline.quadraticCurveTo(0.105, -0.09, 0.105, -0.06);
+        outline.lineTo(0.085, 0.086);
+        outline.quadraticCurveTo(0.08, 0.10, 0.055, 0.10);
+        outline.lineTo(-0.055, 0.10);
+        outline.quadraticCurveTo(-0.08, 0.10, -0.085, 0.086);
+        outline.lineTo(-0.105, -0.06);
+        outline.quadraticCurveTo(-0.105, -0.09, -0.085, -0.095);
+        const bag = new THREE.Mesh(new THREE.ExtrudeGeometry(outline, {
+          depth: 0.055, bevelEnabled: true, bevelSize: 0.012, bevelThickness: 0.01, bevelSegments: 3,
+        }), leather);
+        bag.position.set(0.44, 0.64, 0.01);
+        bag.castShadow = true;
+        accessories.add(bag);
+        const handle = new THREE.Mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3([
+          new THREE.Vector3(0.385, 0.74, 0.048),
+          new THREE.Vector3(0.38, 0.81, 0.048),
+          new THREE.Vector3(0.44, 0.83, 0.048),
+          new THREE.Vector3(0.50, 0.81, 0.048),
+          new THREE.Vector3(0.495, 0.74, 0.048),
+        ]), 32, 0.007, 8, false), leather);
+        accessories.add(handle);
+      }
     };
 
     const buildClothing = (model: ReturnType<typeof createBodyGeometry>) => {
@@ -408,11 +489,12 @@ export function Mannequin3D({ body }: { body: Body }) {
       const current = bodyRef.current;
 
       if (externalModel && externalModelLoaded) {
-        prepareMannequinModel(externalModel, current);
-        const proportions = createBodyGeometry(current);
-        buildClothing(proportions);
-        proportions.geometry.dispose();
-        clothing.visible = true;
+        prepareMannequinModel(externalModel, current, audienceRef.current);
+        const choice = GARMENTS.findIndex((item) => item.value === styleRef.current.garment);
+        fabricStyle.value = Math.max(choice, 0);
+        fabricStyle.color.copy(new THREE.Color(GARMENTS[Math.max(choice, 0)].color));
+        clothing.visible = false;
+        buildFittedAccessories(current.heightCm / 100);
         accessories.visible = true;
         frameCamera(current.heightCm / 100);
         return;
@@ -507,15 +589,9 @@ export function Mannequin3D({ body }: { body: Body }) {
           }
 
           externalModel = loadedModel;
-          // The bundled CC0 model includes a shop stand. The scene supplies its own ground.
-          if (modelSource === "/models/female-display-mannequin.glb") {
-            loadedModel.getObjectByName("mannequin-female-standing_1")?.traverse((part) => { part.visible = false; });
-            loadedModel.getObjectByName("mannequin-female-standing_0")?.traverse((part) => {
-              const mesh = part as THREE.Mesh;
-              if (mesh.isMesh) mesh.material = new THREE.MeshPhysicalMaterial({
-                color: 0xd2d3d6, roughness: 0.7, metalness: 0, clearcoat: 0.04,
-              });
-            });
+          if (modelSource === DEFAULT_MANNEQUIN_URL) {
+            const fittedBody = loadedModel.getObjectByName("Body") as THREE.Mesh | undefined;
+            if (fittedBody?.isMesh) fittedBody.material = makeBodyPreviewMaterial(fabricStyle);
           }
           externalModelGroup.add(loadedModel);
           externalModelLoaded = true;
@@ -532,6 +608,8 @@ export function Mannequin3D({ body }: { body: Body }) {
           rightForearm.visible = false;
           leftLeg.visible = false;
           rightLeg.visible = false;
+          leftKnee.visible = false;
+          rightKnee.visible = false;
           rebuild();
           setExternalModelLoaded(true);
         })
@@ -588,6 +666,11 @@ export function Mannequin3D({ body }: { body: Body }) {
     rebuildRef.current?.();
   }, [garment, accessory]);
 
+  useEffect(() => {
+    audienceRef.current = audience;
+    rebuildRef.current?.();
+  }, [audience]);
+
   const share = async () => {
     const shareData = {
       title: "Meu visual no Provador Virtual",
@@ -621,7 +704,7 @@ export function Mannequin3D({ body }: { body: Body }) {
             Visualização 3D
           </p>
           <p className="mt-0.5 text-sm text-secondary-foreground">
-            {externalModelLoaded ? "Modelo 3D ajustado às suas medidas" : "Visual 3D proporcional às suas medidas"}
+            {externalModelLoaded ? "Corpo anatômico 3D ajustado às suas medidas" : "Visual 3D proporcional às suas medidas"}
           </p>
         </div>
         <span className="rounded-full border border-line bg-background/70 px-2.5 py-1 font-mono text-[10px] text-muted-foreground">
@@ -680,6 +763,9 @@ export function Mannequin3D({ body }: { body: Body }) {
         >
           {shared ? "Link copiado para compartilhar" : "Compartilhar resultado"}
         </button>
+        <p className="sm:col-span-2 text-[11px] leading-relaxed text-muted-foreground">
+          Prévia de cor sobre o corpo. O tecido, o caimento e o tamanho da peça real dependem do modelo 3D do produto.
+        </p>
       </div>
 
       <div className="grid grid-cols-3 border-t border-line bg-background/60 text-center text-[11px] text-muted-foreground">

@@ -3,7 +3,7 @@ import { createClient } from "@supabase/supabase-js";
 
 import { PRODUCT_BY_ID, type Product } from "@/data/catalog";
 import type { Database } from "@/integrations/supabase/types";
-import { garmentFileFromReference } from "@/lib/image-gateway.server";
+import { editImage, garmentFileFromReference, imageSettings } from "@/lib/image-gateway.server";
 import { rowToProduct } from "@/lib/products.shared";
 import { SIZES, type FitPref } from "@/lib/sizing";
 
@@ -49,7 +49,8 @@ export const Route = createFileRoute("/api/public/tryon")({
     handlers: {
       POST: async ({ request }) => {
         const apiKey = process.env["FAL_KEY"];
-        if (!apiKey) return new Response("Serviço de prova visual indisponível", { status: 500 });
+        const gatewayKey = process.env["LOVABLE_API_KEY"];
+        if (!apiKey && !gatewayKey) return new Response("Prova visual indisponível: configure FAL_KEY ou LOVABLE_API_KEY no servidor.", { status: 503 });
 
         const form = await request.formData().catch(() => null);
         if (!form) return new Response("Requisição inválida", { status: 400 });
@@ -70,11 +71,12 @@ export const Route = createFileRoute("/api/public/tryon")({
 
         try {
           const garment = await garmentFileFromReference(product.images.front, new URL(request.url).origin);
-          const [humanImageUrl, garmentImageUrl] = await Promise.all([
-            dataUrlFromFile(photo),
-            dataUrlFromFile(garment),
-          ]);
-          const falResponse = await fetch("https://fal.run/fal-ai/idm-vton", {
+          let base64: string;
+          if (apiKey) {
+            const [humanImageUrl, garmentImageUrl] = await Promise.all([
+              dataUrlFromFile(photo), dataUrlFromFile(garment),
+            ]);
+            const falResponse = await fetch("https://fal.run/fal-ai/idm-vton", {
             method: "POST",
             headers: {
               Authorization: `Key ${apiKey}`,
@@ -86,25 +88,35 @@ export const Route = createFileRoute("/api/public/tryon")({
               description: `${product.name}, ${product.colorName}, ${product.fabric}. ${product.silhouette}. Tamanho ${size}, caimento ${FIT_WORDING[fitPref]}.`,
               num_inference_steps: 30,
             }),
-          });
-          if (!falResponse.ok) {
-            const detail = await falResponse.text();
-            throw new Error(`Fal.ai recusou a prova visual (${falResponse.status}). ${detail.slice(0, 500)}`);
+              signal: AbortSignal.timeout(55_000),
+            });
+            if (!falResponse.ok) throw new Error(`Serviço de prova visual respondeu ${falResponse.status}. Tente novamente.`);
+            const result = (await falResponse.json()) as { image?: { url?: string } };
+            const imageUrl = result.image?.url;
+            if (!imageUrl) throw new Error("O serviço não retornou uma imagem de prova.");
+            const imageResponse = await fetch(imageUrl, { signal: AbortSignal.timeout(15_000) });
+            if (!imageResponse.ok) throw new Error("Não foi possível carregar a imagem gerada.");
+            const imageFile = new File([await imageResponse.arrayBuffer()], "tryon.png", { type: imageResponse.headers.get("content-type") ?? "image/png" });
+            base64 = (await dataUrlFromFile(imageFile)).split(",")[1] ?? "";
+          } else {
+            const edit = new FormData();
+            edit.set("image[]", photo);
+            edit.append("image[]", garment);
+            edit.set("stream", "false");
+            edit.set("prompt", `Edite somente a peça de roupa na foto da pessoa usando a segunda imagem como referência: ${product.name}, ${product.colorName}, ${product.fabric}. Preserve exatamente rosto, cabelo, pose, corpo, fundo e todas as outras roupas. Caimento ${FIT_WORDING[fitPref]}.`);
+            const response = await editImage({ ...imageSettings, apiKey: gatewayKey! }, edit, AbortSignal.timeout(55_000));
+            if (!response.ok) throw new Error(`Serviço de prova visual respondeu ${response.status}. Tente novamente.`);
+            const result = (await response.json()) as { data?: Array<{ b64_json?: string }> };
+            base64 = result.data?.[0]?.b64_json ?? "";
+            if (!base64) throw new Error("O serviço não retornou uma imagem de prova.");
           }
-          const result = (await falResponse.json()) as { image?: { url?: string } };
-          const imageUrl = result.image?.url;
-          if (!imageUrl) throw new Error("O Fal.ai não retornou uma imagem de prova.");
-          const imageResponse = await fetch(imageUrl);
-          if (!imageResponse.ok) throw new Error("Não foi possível carregar a imagem gerada.");
-          const imageFile = new File([await imageResponse.arrayBuffer()], "tryon.png", { type: imageResponse.headers.get("content-type") ?? "image/png" });
-          const imageDataUrl = await dataUrlFromFile(imageFile);
-          const [, base64 = ""] = imageDataUrl.split(",");
           const payload = JSON.stringify({ type: "image_edit.completed", b64_json: base64 });
           return new Response(`event: image_edit.completed\ndata: ${payload}\n\n`, {
             headers: { "Content-Type": "text/event-stream", "Cache-Control": "no-cache, no-transform", Connection: "keep-alive" },
           });
         } catch (error) {
-          return new Response(error instanceof Error ? error.message : "Falha na prova visual.", { status: 502 });
+          const timeout = error instanceof Error && (error.name === "TimeoutError" || error.name === "AbortError");
+          return new Response(timeout ? "A geração demorou além do limite. Tente novamente em instantes." : error instanceof Error ? error.message : "Falha na prova visual.", { status: timeout ? 504 : 502 });
         }
       },
     },

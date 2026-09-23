@@ -6,8 +6,8 @@ import { Button, ErrorNote, Eyebrow, Panel, ToggleChip } from "@/components/prov
 import { OCCASION_LABEL, OCCASIONS, STYLE_LABEL, STYLE_TAGS, type Product } from "@/data/catalog";
 import { supabase } from "@/integrations/supabase/client";
 import { fileToSizedDataURL } from "@/lib/image-utils";
-import { productImageUrl, PRODUCT_IMAGE_BUCKET } from "@/lib/products.shared";
-import { deleteProduct, getAdminState, listProducts, saveProduct } from "@/lib/products.functions";
+import { productImageUrl } from "@/lib/products.shared";
+import { deleteProduct, getAdminState, listMerchantProducts, saveProduct, uploadMerchantPhoto } from "@/lib/products.functions";
 import { SIZES, type BodyShape, type SizeSpec } from "@/lib/sizing";
 
 export const Route = createFileRoute("/_authenticated/admin-lojista")({
@@ -192,9 +192,10 @@ function slugify(text: string) {
 function AdminPage() {
   const navigate = useNavigate();
   const runGetAdminState = useServerFn(getAdminState);
-  const runListProducts = useServerFn(listProducts);
+  const runListProducts = useServerFn(listMerchantProducts);
   const runSaveProduct = useServerFn(saveProduct);
   const runDeleteProduct = useServerFn(deleteProduct);
+  const runUploadPhoto = useServerFn(uploadMerchantPhoto);
 
   const [status, setStatus] = useState<"carregando" | "negado" | "pronto">("carregando");
   const [email, setEmail] = useState<string | null>(null);
@@ -216,7 +217,7 @@ function AdminPage() {
     void (async () => {
       const state = await runGetAdminState();
       if (cancelled) return;
-      if (!state.isAdmin) {
+      if (!state.isMerchant) {
         setStatus("negado");
         setEmail(state.email);
         return;
@@ -253,11 +254,7 @@ function AdminPage() {
           : draft?.imageDetailPath || imagePaths[slug]?.detail;
     if (!file) return fallback || null;
     const dataUrl = await fileToSizedDataURL(file);
-    const blob = await (await fetch(dataUrl)).blob();
-    const path = `pecas/${slug}-${kind}-${Date.now()}.jpg`;
-    const { error: err } = await supabase.storage.from(PRODUCT_IMAGE_BUCKET).upload(path, blob, { contentType: "image/jpeg", upsert: true });
-    if (err) throw new Error(`Falha no upload da foto ${kind}: ${err.message}`);
-    return path;
+    return runUploadPhoto({ data: { image: dataUrl, kind } });
   }
 
   async function submitDraft() {

@@ -1,4 +1,5 @@
 import { Button, Eyebrow, Field, MeasureField, Panel, ToggleChip } from "@/components/provador/primitives";
+import { Mannequin3D } from "@/components/provador/Mannequin3D";
 import { OCCASIONS, OCCASION_LABEL, STYLE_LABEL, STYLE_TAGS } from "@/data/catalog";
 import {
   BODY_SHAPE_LABEL,
@@ -49,7 +50,7 @@ export function ProfileStep({
   const patch = (next: Partial<Profile>) => onProfile({ ...profile, ...next });
 
   return (
-    <div className="grid gap-6 lg:grid-cols-[1fr_1fr] lg:items-start">
+    <div className="grid gap-6 lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)] lg:items-start">
       <Panel className="p-6 sm:p-7">
         <Eyebrow>Passo 2 · medidas</Eyebrow>
         <h2 className="mt-3 font-serif text-3xl text-foreground">Confira o que a foto mostrou</h2>
@@ -70,6 +71,13 @@ export function ProfileStep({
           <MeasureField label="Entrepernas" value={body.inseamCm} min={55} max={105} estimated={estimated} onChange={(v) => set("inseamCm", v)} />
         </div>
       </Panel>
+
+      <div className="space-y-4 lg:sticky lg:top-6">
+        <Mannequin3D body={body} />
+        <p className="px-1 text-xs leading-relaxed text-muted-foreground">
+          A forma é uma representação visual proporcional das medidas informadas. Ela não substitui a foto nem a prova virtual por IA.
+        </p>
+      </div>
 
       <Panel className="p-6 sm:p-7">
         <Eyebrow>Passo 2 · estilo</Eyebrow>

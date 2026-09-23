@@ -1,5 +1,6 @@
 import { useEffect, useRef } from "react";
 import * as THREE from "three";
+import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 
 import type { Body } from "@/lib/sizing";
 
@@ -106,6 +107,20 @@ export function Mannequin3D({ body }: { body: Body }) {
     });
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     renderer.outputColorSpace = THREE.SRGBColorSpace;
+
+    const controls = new OrbitControls(camera, renderer.domElement);
+    controls.enableDamping = true;
+    controls.dampingFactor = 0.07;
+    controls.enablePan = false;
+    controls.enableZoom = true;
+    controls.minDistance = 2.1;
+    controls.maxDistance = 4.8;
+    controls.minPolarAngle = Math.PI * 0.2;
+    controls.maxPolarAngle = Math.PI * 0.82;
+    controls.target.set(0, 0.95, 0);
+    controls.autoRotate = false;
+    controls.autoRotateSpeed = 0.9;
+    controls.update();
 
     scene.add(new THREE.HemisphereLight(0xfff8ef, 0x6b5a4b, 2.1));
 
@@ -261,7 +276,8 @@ export function Mannequin3D({ body }: { body: Body }) {
 
       camera.position.y = height * 0.54;
       camera.position.z = Math.max(2.65, height * 1.72);
-      camera.lookAt(0, height * 0.53, 0);
+      controls.target.set(0, height * 0.53, 0);
+      controls.update();
       ground.scale.setScalar(Math.max(0.9, height * 0.62));
     };
 
@@ -285,6 +301,7 @@ export function Mannequin3D({ body }: { body: Body }) {
     const animate = () => {
       if (stopped) return;
       frame = requestAnimationFrame(animate);
+      controls.update();
       renderer.render(scene, camera);
     };
     animate();
@@ -297,6 +314,7 @@ export function Mannequin3D({ body }: { body: Body }) {
       disposeObject(mannequin);
       ground.geometry.dispose();
       ground.material.dispose();
+      controls.dispose();
       renderer.dispose();
     };
   }, []);

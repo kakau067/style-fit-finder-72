@@ -2,6 +2,7 @@ import { useRef, useState } from "react";
 
 import modeloImage from "@/assets/demo/modelo.jpg";
 import { Button, ErrorNote, Eyebrow, Panel } from "@/components/provador/primitives";
+import { CameraCapture } from "@/components/provador/CameraCapture";
 import camisaImage from "@/assets/products/camisa-viscose.jpg";
 import calcaImage from "@/assets/products/calca-alfaiataria.jpg";
 import vestidoImage from "@/assets/products/vestido-linho.jpg";
@@ -25,6 +26,7 @@ export function PhotoStep({ onDone }: { onDone: (result: PhotoResult) => void })
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [dragging, setDragging] = useState(false);
+  const [camera, setCamera] = useState(false);
 
   async function run(file: File) {
     setError(null);
@@ -119,8 +121,11 @@ export function PhotoStep({ onDone }: { onDone: (result: PhotoResult) => void })
           />
 
           <div className="mt-5 flex flex-wrap items-center justify-center gap-3">
-            <Button onClick={() => inputRef.current?.click()} disabled={busy}>
-              {busy ? "Analisando…" : "Escolher foto"}
+            <Button onClick={() => setCamera(true)} disabled={busy}>
+              {busy ? "Analisando…" : "Tirar foto"}
+            </Button>
+            <Button variant="outline" onClick={() => inputRef.current?.click()} disabled={busy}>
+              Escolher arquivo
             </Button>
             <Button variant="outline" onClick={() => void useExample()} disabled={busy}>
               Usar foto de exemplo
@@ -140,6 +145,17 @@ export function PhotoStep({ onDone }: { onDone: (result: PhotoResult) => void })
           servidor.
         </p>
       </Panel>
+
+      {camera ? (
+        <CameraCapture
+          onClose={() => setCamera(false)}
+          onCapture={(file) => {
+            setCamera(false);
+            void run(file);
+          }}
+        />
+      ) : null}
+
 
       <div className="space-y-4">
         <Eyebrow>No provador hoje</Eyebrow>

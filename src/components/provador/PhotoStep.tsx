@@ -2,6 +2,7 @@ import { useRef, useState } from "react";
 
 import modeloImage from "@/assets/demo/modelo.jpg";
 import { Button, ErrorNote, Eyebrow, Panel } from "@/components/provador/primitives";
+import { CameraCapture } from "@/components/provador/CameraCapture";
 import camisaImage from "@/assets/products/camisa-viscose.jpg";
 import calcaImage from "@/assets/products/calca-alfaiataria.jpg";
 import vestidoImage from "@/assets/products/vestido-linho.jpg";

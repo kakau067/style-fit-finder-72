@@ -154,7 +154,12 @@ export function Mannequin3D({ body }: { body: Body }) {
     scene.add(ground);
 
     const clearGroup = (group: THREE.Group) => {
-      group.children.forEach((child) => disposeObject(child));
+      group.children.forEach((child) => {
+        child.traverse((descendant) => {
+          const mesh = descendant as THREE.Mesh;
+          if (mesh.geometry) mesh.geometry.dispose();
+        });
+      });
       group.clear();
     };
 

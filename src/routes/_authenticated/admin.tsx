@@ -10,7 +10,7 @@ import { productImageUrl, PRODUCT_IMAGE_BUCKET } from "@/lib/products.shared";
 import { deleteProduct, getAdminState, listProducts, saveProduct } from "@/lib/products.functions";
 import { SIZES, type BodyShape, type SizeSpec } from "@/lib/sizing";
 
-export const Route = createFileRoute("/admin")({
+export const Route = createFileRoute("/_authenticated/admin")({
   head: () => ({
     meta: [
       { title: "Área do lojista — catálogo | Provador Virtual" },
@@ -199,11 +199,6 @@ function AdminPage() {
   useEffect(() => {
     let cancelled = false;
     void (async () => {
-      const { data } = await supabase.auth.getSession();
-      if (!data.session) {
-        navigate({ to: "/auth" });
-        return;
-      }
       const state = await runGetAdminState();
       if (cancelled) return;
       if (!state.isAdmin) {
@@ -218,7 +213,7 @@ function AdminPage() {
     return () => {
       cancelled = true;
     };
-  }, [navigate, runGetAdminState, refresh]);
+  }, [runGetAdminState, refresh]);
 
   useEffect(() => {
     // Image paths are not part of the public Product shape; fetch rows once

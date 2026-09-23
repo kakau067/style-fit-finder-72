@@ -33,10 +33,10 @@ function AuthPage() {
 
   useEffect(() => {
     const { data: sub } = supabase.auth.onAuthStateChange((_event, session) => {
-      if (session) navigate({ to: "/admin" });
+      if (session) navigate({ to: "/admin-lojista" });
     });
     void supabase.auth.getSession().then(({ data }) => {
-      if (data.session) navigate({ to: "/admin" });
+      if (data.session) navigate({ to: "/admin-lojista" });
     });
     return () => sub.subscription.unsubscribe();
   }, [navigate]);
@@ -50,14 +50,17 @@ function AuthPage() {
         const { error: err } = await supabase.auth.signInWithPassword({ email, password });
         if (err) throw err;
       } else {
-        const { data, error: err } = await supabase.auth.signUp({ email, password });
+        const { data, error: err } = await supabase.auth.signUp({ email: email.trim(), password });
         if (err) throw err;
         if (!data.session) {
-          setInfo("Conta criada! Confirme o e-mail que acabou de chegar na sua caixa de entrada.");
+          setInfo("Confira seu e-mail para confirmar o cadastro. Depois volte aqui e entre com sua senha.");
         }
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Não foi possível entrar.");
+      const message = err instanceof Error ? err.message : "Não foi possível criar a conta.";
+      setError(message === "Email rate limit exceeded"
+        ? "Muitos e-mails enviados. Aguarde alguns minutos antes de tentar novamente."
+        : message);
     } finally {
       setBusy(false);
     }
@@ -66,7 +69,7 @@ function AuthPage() {
   async function submitGoogle() {
     setError(null);
     const result = await lovable.auth.signInWithOAuth("google", {
-      redirect_uri: window.location.origin,
+      redirect_uri: `${window.location.origin}/auth`,
     });
     if (result.error) setError("Não foi possível entrar com o Google.");
   }

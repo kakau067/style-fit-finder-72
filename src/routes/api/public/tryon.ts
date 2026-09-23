@@ -35,13 +35,6 @@ const FIT_WORDING: Record<FitPref, string> = {
   solto: "solto e confortável, com folga visível",
 };
 
-function garmentType(product: Product): "upper_body" | "lower_body" | "dress" {
-  const keys = Object.keys(product.fit.ease);
-  if (keys.includes("inseam")) return "lower_body";
-  if (keys.includes("hips")) return "dress";
-  return "upper_body";
-}
-
 async function dataUrlFromFile(file: File): Promise<string> {
   const bytes = new Uint8Array(await file.arrayBuffer());
   let binary = "";
@@ -90,7 +83,6 @@ export const Route = createFileRoute("/api/public/tryon")({
             body: JSON.stringify({
               human_image_url: humanImageUrl,
               garment_image_url: garmentImageUrl,
-              garment_type: garmentType(product),
               description: `${product.name}, ${product.colorName}, ${product.fabric}. ${product.silhouette}. Tamanho ${size}, caimento ${FIT_WORDING[fitPref]}.`,
               num_inference_steps: 30,
             }),

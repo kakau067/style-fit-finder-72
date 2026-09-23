@@ -10,7 +10,7 @@ type Garment = "basico" | "camisa" | "blazer" | "vestido" | "calca";
 type Accessory = "nenhum" | "oculos" | "bolsa";
 
 const GARMENTS: { value: Garment; label: string; color: string }[] = [
-  { value: "basico", label: "Básico", color: "#E9E0D2" },
+  { value: "basico", label: "Manequim", color: "#D2D3D6" },
   { value: "camisa", label: "Camisa", color: "#9BAA8E" },
   { value: "blazer", label: "Blazer", color: "#414246" },
   { value: "vestido", label: "Vestido", color: "#B4614A" },
@@ -131,7 +131,7 @@ export function Mannequin3D({ body }: { body: Body }) {
     if (!canvas) return;
 
     const scene = new THREE.Scene();
-    scene.background = new THREE.Color(0xf4efe7);
+    scene.background = new THREE.Color(0xf4f5f7);
 
     const camera = new THREE.PerspectiveCamera(28, 1, 0.1, 10);
     camera.position.set(0, 0.92, 3.15);
@@ -199,7 +199,7 @@ export function Mannequin3D({ body }: { body: Body }) {
     const modelSource = getMannequinModelSource();
 
     const skin = new THREE.MeshPhysicalMaterial({
-      color: 0xc69d82,
+      color: 0xd2d3d6,
       roughness: 0.62,
       metalness: 0,
       clearcoat: 0.08,
@@ -230,6 +230,7 @@ export function Mannequin3D({ body }: { body: Body }) {
     const hair = new THREE.Mesh(new THREE.SphereGeometry(1, 48, 32, 0, Math.PI * 2, 0, Math.PI * 0.62), hairMaterial);
     hair.scale.set(1, 0.78, 1);
     hair.castShadow = true;
+    hair.visible = false;
     mannequin.add(hair);
 
     const leftArm = new THREE.Group();
@@ -245,7 +246,7 @@ export function Mannequin3D({ body }: { body: Body }) {
     const leftKnee = addJoint(mannequin, skin, 0.09, new THREE.Vector3());
     const rightKnee = addJoint(mannequin, skin, 0.09, new THREE.Vector3());
 
-    const groundMaterial = new THREE.MeshStandardMaterial({ color: 0xe0d5c8, roughness: 0.95 });
+    const groundMaterial = new THREE.MeshStandardMaterial({ color: 0xe4e6e9, roughness: 0.95 });
     const ground = new THREE.Mesh(new THREE.CircleGeometry(1.35, 64), groundMaterial);
     ground.rotation.x = -Math.PI / 2;
     ground.position.y = 0.01;
@@ -261,13 +262,17 @@ export function Mannequin3D({ body }: { body: Body }) {
     scene.add(shadowDisc);
 
     const clearGroup = (group: THREE.Group) => {
+      const materials = new Set<THREE.Material>();
       group.children.forEach((child) => {
         child.traverse((descendant) => {
           const mesh = descendant as THREE.Mesh;
           if (mesh.geometry) mesh.geometry.dispose();
+          if (Array.isArray(mesh.material)) mesh.material.forEach((material) => materials.add(material));
+          else if (mesh.material) materials.add(mesh.material);
         });
       });
       group.clear();
+      materials.forEach((material) => material.dispose());
     };
 
     const buildClothing = (model: ReturnType<typeof createBodyGeometry>) => {
@@ -281,12 +286,12 @@ export function Mannequin3D({ body }: { body: Body }) {
         clearcoat: styleRef.current.garment === "blazer" ? 0.03 : 0.12,
       });
 
-      const torsoRadius = Math.max(model.chest * 0.208, 0.16);
+      const torsoRadius = Math.max(model.chest * 0.24, 0.18);
       const torso = new THREE.Mesh(
         new THREE.LatheGeometry(
           [
-            new THREE.Vector2(Math.max(model.waist * 0.174, 0.14), model.legHeight + model.torsoHeight * 0.04),
-            new THREE.Vector2(Math.max(model.waist * 0.19, 0.15), model.legHeight + model.torsoHeight * 0.43),
+            new THREE.Vector2(Math.max(model.hips * 0.225, 0.18), model.legHeight + model.torsoHeight * 0.04),
+            new THREE.Vector2(Math.max(model.waist * 0.215, 0.17), model.legHeight + model.torsoHeight * 0.43),
             new THREE.Vector2(torsoRadius * 1.02, model.legHeight + model.torsoHeight * 0.82),
             new THREE.Vector2(torsoRadius * 1.03, model.shoulderY + 0.015),
           ],
@@ -296,7 +301,14 @@ export function Mannequin3D({ body }: { body: Body }) {
       );
       torso.castShadow = true;
       torso.receiveShadow = true;
-      clothing.add(torso);
+      if (styleRef.current.garment === "basico") {
+        torso.geometry.dispose();
+        fabric.dispose();
+      } else if (styleRef.current.garment === "calca") {
+        torso.geometry.dispose();
+      } else {
+        clothing.add(torso);
+      }
 
       if (styleRef.current.garment === "vestido") {
         const skirt = new THREE.Mesh(
@@ -310,7 +322,6 @@ export function Mannequin3D({ body }: { body: Body }) {
       }
 
       if (styleRef.current.garment === "calca") {
-        clearGroup(clothing);
         const pantsMaterial = fabric;
         for (const side of [-1, 1]) {
           const leg = new THREE.Mesh(
@@ -339,6 +350,13 @@ export function Mannequin3D({ body }: { body: Body }) {
           lapel.rotation.y = side * 0.08;
           lapel.castShadow = true;
           clothing.add(lapel);
+          const sleeve = addCapsule(
+            clothing, fabric, Math.max(model.chest * 0.085, 0.07),
+            model.height * 0.2,
+            new THREE.Vector3(side * model.chest * 0.255, model.shoulderY - model.height * 0.115, 0),
+            24,
+          );
+          sleeve.rotation.z = side * -0.13;
         }
       }
 
@@ -374,19 +392,29 @@ export function Mannequin3D({ body }: { body: Body }) {
       }
     };
 
+    const frameCamera = (height: number) => {
+      const previous = controls.target.clone();
+      const offset = camera.position.clone().sub(previous);
+      const nextY = height * 0.53;
+      const ratio = THREE.MathUtils.clamp(height / Math.max(previous.y * 1.9, 0.1), 0.7, 1.3);
+      controls.target.set(0, nextY, 0);
+      camera.position.copy(controls.target).add(offset.multiplyScalar(ratio));
+      controls.update();
+      ground.scale.setScalar(Math.max(0.9, height * 0.62));
+      shadowDisc.scale.setScalar(Math.max(0.65, height * 0.38));
+    };
+
     const rebuild = () => {
       const current = bodyRef.current;
 
       if (externalModel && externalModelLoaded) {
         prepareMannequinModel(externalModel, current);
-        const modelBounds = new THREE.Box3().setFromObject(externalModel);
-        const modelHeight = Math.max(1.35, modelBounds.max.y - modelBounds.min.y);
-        camera.position.y = modelHeight * 0.54;
-        camera.position.z = Math.max(2.65, modelHeight * 1.72);
-        controls.target.set(0, modelHeight * 0.53, 0);
-        controls.update();
-        ground.scale.setScalar(Math.max(0.9, modelHeight * 0.62));
-        shadowDisc.scale.setScalar(Math.max(0.65, modelHeight * 0.38));
+        const proportions = createBodyGeometry(current);
+        buildClothing(proportions);
+        proportions.geometry.dispose();
+        clothing.visible = true;
+        accessories.visible = true;
+        frameCamera(current.heightCm / 100);
         return;
       }
 
@@ -464,12 +492,7 @@ export function Mannequin3D({ body }: { body: Body }) {
 
       buildClothing(model);
 
-      camera.position.y = height * 0.54;
-      camera.position.z = Math.max(2.65, height * 1.72);
-      controls.target.set(0, height * 0.53, 0);
-      controls.update();
-      ground.scale.setScalar(Math.max(0.9, height * 0.62));
-      shadowDisc.scale.setScalar(Math.max(0.65, height * 0.38));
+      frameCamera(height);
     };
 
     rebuildRef.current = rebuild;
@@ -484,6 +507,16 @@ export function Mannequin3D({ body }: { body: Body }) {
           }
 
           externalModel = loadedModel;
+          // The bundled CC0 model includes a shop stand. The scene supplies its own ground.
+          if (modelSource === "/models/female-display-mannequin.glb") {
+            loadedModel.getObjectByName("mannequin-female-standing_1")?.traverse((part) => { part.visible = false; });
+            loadedModel.getObjectByName("mannequin-female-standing_0")?.traverse((part) => {
+              const mesh = part as THREE.Mesh;
+              if (mesh.isMesh) mesh.material = new THREE.MeshPhysicalMaterial({
+                color: 0xd2d3d6, roughness: 0.7, metalness: 0, clearcoat: 0.04,
+              });
+            });
+          }
           externalModelGroup.add(loadedModel);
           externalModelLoaded = true;
           externalModelGroup.visible = true;
@@ -499,9 +532,6 @@ export function Mannequin3D({ body }: { body: Body }) {
           rightForearm.visible = false;
           leftLeg.visible = false;
           rightLeg.visible = false;
-          clothing.visible = false;
-          accessories.visible = false;
-
           rebuild();
           setExternalModelLoaded(true);
         })
@@ -537,6 +567,8 @@ export function Mannequin3D({ body }: { body: Body }) {
       cancelAnimationFrame(frame);
       observer.disconnect();
       rebuildRef.current = null;
+      clearGroup(clothing);
+      clearGroup(accessories);
       disposeObject(mannequin);
       ground.geometry.dispose();
       ground.material.dispose();
@@ -572,7 +604,7 @@ export function Mannequin3D({ body }: { body: Body }) {
       if (navigator.share) {
         await navigator.share(shareData);
       } else {
-        await navigator.clipboard?.writeText(window.location.href);
+        await navigator.clipboard.writeText(shareData.url);
       }
       setShared(true);
       window.setTimeout(() => setShared(false), 2200);
@@ -582,7 +614,7 @@ export function Mannequin3D({ body }: { body: Body }) {
   };
 
   return (
-    <div className="overflow-hidden rounded-xl border border-line bg-[#f4efe7]">
+    <div className="overflow-hidden rounded-xl border border-line bg-[#f4f5f7]">
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-line px-4 py-3">
         <div>
           <p className="font-mono text-[10px] uppercase tracking-[0.2em] text-muted-foreground">

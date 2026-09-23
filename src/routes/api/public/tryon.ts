@@ -1,12 +1,11 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { fal } from "@fal-ai/client";
 import { createClient } from "@supabase/supabase-js";
 
 import { PRODUCT_BY_ID, type Product } from "@/data/catalog";
 import type { Database } from "@/integrations/supabase/types";
 import { garmentFileFromReference } from "@/lib/image-gateway.server";
 import { rowToProduct } from "@/lib/products.shared";
-import { SIZES, type FitPref, type Size } from "@/lib/sizing";
+import { SIZES, type FitPref } from "@/lib/sizing";
 
 async function findProduct(id: string): Promise<Product | null> {
   const key = process.env["SUPABASE_PUBLISHABLE_KEY"];
@@ -78,21 +77,30 @@ export const Route = createFileRoute("/api/public/tryon")({
 
         try {
           const garment = await garmentFileFromReference(product.images.front, new URL(request.url).origin);
-          fal.config({ credentials: apiKey });
           const [humanImageUrl, garmentImageUrl] = await Promise.all([
             dataUrlFromFile(photo),
             dataUrlFromFile(garment),
           ]);
-          const result = await fal.subscribe("fal-ai/idm-vton", {
-            input: {
+          const falResponse = await fetch("https://fal.run/fal-ai/idm-vton", {
+            method: "POST",
+            headers: {
+              Authorization: `Key ${apiKey}`,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
               human_image_url: humanImageUrl,
               garment_image_url: garmentImageUrl,
               garment_type: garmentType(product),
               description: `${product.name}, ${product.colorName}, ${product.fabric}. ${product.silhouette}. Tamanho ${size}, caimento ${FIT_WORDING[fitPref]}.`,
               num_inference_steps: 30,
-            },
+            }),
           });
-          const imageUrl = result.data?.image?.url;
+          if (!falResponse.ok) {
+            const detail = await falResponse.text();
+            throw new Error(`Fal.ai recusou a prova visual (${falResponse.status}). ${detail.slice(0, 500)}`);
+          }
+          const result = (await falResponse.json()) as { image?: { url?: string } };
+          const imageUrl = result.image?.url;
           if (!imageUrl) throw new Error("O Fal.ai não retornou uma imagem de prova.");
           const imageResponse = await fetch(imageUrl);
           if (!imageResponse.ok) throw new Error("Não foi possível carregar a imagem gerada.");

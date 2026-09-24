@@ -13,6 +13,7 @@ const Mannequin3D = lazy(() => import("@/components/provador/Mannequin3D").then(
 export type TryOnRequest = { product: Product; size: Size; fitPref: FitPref; photoDataUrl: string; body: Body; audience: "feminino" | "masculino" };
 type View = "photo" | "mannequin" | "detail";
 type QueueJob = { requestId: string; ticket: string; model?: "idm" | "fashn"; responseUrl?: string };
+type TryOnProvider = "auto" | "gemini";
 const pendingJobs = new Map<string, QueueJob>();
 const pendingSubmissions = new Map<string, Promise<{ job?: QueueJob; response?: Response }>>();
 const completedResults = new Map<string, string>();
@@ -48,13 +49,13 @@ export function TryOnOverlay({ request, onClose }: { request: TryOnRequest; onCl
   const productPhotos = (["front", "back", "detail"] as const)
     .filter((kind, index, kinds) => kinds.findIndex((other) => request.product.images[other] === request.product.images[kind]) === index);
 
-  const start = useCallback(async (retry = false, renderMode: "fast" | "quality" = "fast") => {
+  const start = useCallback(async (retry = false, renderMode: "fast" | "quality" = "fast", provider: TryOnProvider = "auto") => {
     abortRef.current?.abort();
     const controller = new AbortController();
     abortRef.current = controller;
     setImage(null); setGenerated(null); setDone(false); setError(null); setRunning(true); setCompare(50);
     setPhase("Preparando a prova visual…");
-    const jobKey = `${request.product.id}:${request.product.images.front}:${renderMode}:${request.photoDataUrl}`;
+    const jobKey = `${request.product.id}:${request.product.images.front}:${renderMode}:${provider}:${request.photoDataUrl}`;
     if (retry) {
       pendingJobs.delete(jobKey);
       completedResults.delete(jobKey);
@@ -71,6 +72,7 @@ export function TryOnOverlay({ request, onClose }: { request: TryOnRequest; onCl
         form.append("size", request.size);
         form.append("fitPref", request.fitPref);
         form.append("renderMode", renderMode);
+        form.append("provider", provider);
         let submitting = pendingSubmissions.get(jobKey);
         if (!submitting) {
           // Keep submission alive if the dialog closes. This prevents an
@@ -90,6 +92,15 @@ export function TryOnOverlay({ request, onClose }: { request: TryOnRequest; onCl
         controller.signal.throwIfAborted();
         job = queued;
         if (response) {
+          if (response.headers.get("content-type")?.includes("application/json")) {
+            const result = (await response.json()) as { imageDataUrl?: string };
+            if (!result.imageDataUrl) throw new Error("O Gemini não retornou uma imagem de prova.");
+            rememberResult(jobKey, result.imageDataUrl);
+            setGenerated(result.imageDataUrl);
+            setDone(true);
+            if (viewRef.current === "mannequin") { viewRef.current = "photo"; setView("photo"); }
+            return;
+          }
           // The gateway streams previews directly. Never submit the same costly
           // generation again when an SSE connection ends without an image.
           setPhase("Aplicando a peça à sua foto…");
@@ -206,6 +217,7 @@ export function TryOnOverlay({ request, onClose }: { request: TryOnRequest; onCl
             {request.product.storeUrl ? <a href={request.product.storeUrl} target="_blank" rel="noreferrer" className="block"><Button className="w-full">Comprar agora</Button></a> : null}
             <Button variant="outline" onClick={() => void start(true)} disabled={running} className="w-full">{running ? "Gerando…" : "Gerar de novo"}</Button>
             {!running && done ? <Button variant="outline" onClick={() => void start(false, "quality")} className="w-full">Gerar foto em alta qualidade</Button> : null}
+            {!running ? <Button variant="outline" onClick={() => void start(true, "quality", "gemini")} className="w-full">Provar com Fit Check (Gemini)</Button> : null}
             {running ? <p className="text-xs text-muted-foreground">Você pode fechar e voltar a esta peça; a geração em andamento será retomada.</p> : null}
             <p className="text-xs leading-relaxed text-muted-foreground">A foto original é preservada fora da área da peça escolhida. Ajuste os limites se necessário; dentro dessa área, a IA pode alterar detalhes.</p>
           </div>

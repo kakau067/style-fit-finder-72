@@ -24,11 +24,7 @@ export type Database = {
           fit: Json
           flatters: string[]
           id: string
-          image_back_path: string | null
-          image_detail_path: string | null
-          image_front_path: string | null
           image_path: string
-          store_url: string
           name: string
           occasions: string[]
           price: number
@@ -48,11 +44,7 @@ export type Database = {
           fit: Json
           flatters?: string[]
           id?: string
-          image_back_path?: string | null
-          image_detail_path?: string | null
-          image_front_path?: string | null
           image_path: string
-          store_url?: string
           name: string
           occasions?: string[]
           price: number
@@ -72,11 +64,7 @@ export type Database = {
           fit?: Json
           flatters?: string[]
           id?: string
-          image_back_path?: string | null
-          image_detail_path?: string | null
-          image_front_path?: string | null
           image_path?: string
-          store_url?: string
           name?: string
           occasions?: string[]
           price?: number

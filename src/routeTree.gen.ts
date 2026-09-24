@@ -12,7 +12,7 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as AuthenticatedRouteRouteImport } from './routes/_authenticated/route'
 import { Route as AuthRouteImport } from './routes/auth'
-import { Route as AuthenticatedAdminRouteImport } from './routes/_authenticated/admin-lojista'
+import { Route as AuthenticatedAdminLojistaRouteImport } from './routes/_authenticated/admin-lojista'
 import { Route as ApiPublicTryonRouteImport } from './routes/api/public/tryon'
 import { Route as ApiPublicProductImageSplatRouteImport } from './routes/api/public/product-image/$'
 
@@ -30,11 +30,12 @@ const AuthRoute = AuthRouteImport.update({
   path: '/auth',
   getParentRoute: () => rootRouteImport,
 } as any)
-const AuthenticatedAdminRoute = AuthenticatedAdminRouteImport.update({
-  id: '/admin-lojista',
-  path: '/admin-lojista',
-  getParentRoute: () => AuthenticatedRouteRoute,
-} as any)
+const AuthenticatedAdminLojistaRoute =
+  AuthenticatedAdminLojistaRouteImport.update({
+    id: '/admin-lojista',
+    path: '/admin-lojista',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
 const ApiPublicTryonRoute = ApiPublicTryonRouteImport.update({
   id: '/api/public/tryon',
   path: '/api/public/tryon',
@@ -50,14 +51,14 @@ const ApiPublicProductImageSplatRoute =
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/auth': typeof AuthRoute
-  '/admin-lojista': typeof AuthenticatedAdminRoute
+  '/admin-lojista': typeof AuthenticatedAdminLojistaRoute
   '/api/public/tryon': typeof ApiPublicTryonRoute
   '/api/public/product-image/$': typeof ApiPublicProductImageSplatRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/auth': typeof AuthRoute
-  '/admin-lojista': typeof AuthenticatedAdminRoute
+  '/admin-lojista': typeof AuthenticatedAdminLojistaRoute
   '/api/public/tryon': typeof ApiPublicTryonRoute
   '/api/public/product-image/$': typeof ApiPublicProductImageSplatRoute
 }
@@ -66,7 +67,7 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/_authenticated': typeof AuthenticatedRouteRouteWithChildren
   '/auth': typeof AuthRoute
-  '/_authenticated/admin-lojista': typeof AuthenticatedAdminRoute
+  '/_authenticated/admin-lojista': typeof AuthenticatedAdminLojistaRoute
   '/api/public/tryon': typeof ApiPublicTryonRoute
   '/api/public/product-image/$': typeof ApiPublicProductImageSplatRoute
 }
@@ -130,7 +131,7 @@ declare module '@tanstack/react-router' {
       id: '/_authenticated/admin-lojista'
       path: '/admin-lojista'
       fullPath: '/admin-lojista'
-      preLoaderRoute: typeof AuthenticatedAdminRouteImport
+      preLoaderRoute: typeof AuthenticatedAdminLojistaRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
     '/api/public/tryon': {
@@ -151,11 +152,11 @@ declare module '@tanstack/react-router' {
 }
 
 interface AuthenticatedRouteRouteChildren {
-  AuthenticatedAdminRoute: typeof AuthenticatedAdminRoute
+  AuthenticatedAdminLojistaRoute: typeof AuthenticatedAdminLojistaRoute
 }
 
 const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
-  AuthenticatedAdminRoute: AuthenticatedAdminRoute,
+  AuthenticatedAdminLojistaRoute: AuthenticatedAdminLojistaRoute,
 }
 
 const AuthenticatedRouteRouteWithChildren =

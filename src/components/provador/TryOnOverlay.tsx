@@ -10,6 +10,13 @@ import type { FitPref, Size } from "@/lib/sizing";
 export type TryOnRequest = { product: Product; size: Size; fitPref: FitPref; photoDataUrl: string };
 type QueueJob = { requestId: string; ticket: string };
 const pendingJobs = new Map<string, QueueJob>();
+const completedResults = new Map<string, string>();
+
+function rememberResult(key: string, image: string) {
+  completedResults.delete(key);
+  completedResults.set(key, image);
+  if (completedResults.size > 6) completedResults.delete(completedResults.keys().next().value!);
+}
 
 function waitForPoll(signal: AbortSignal): Promise<void> {
   return new Promise((resolve, reject) => {
@@ -38,15 +45,17 @@ export function TryOnOverlay({ request, onClose }: { request: TryOnRequest; onCl
     setImage(null); setGenerated(null); setDone(false); setError(null); setRunning(true); setCompare(50);
     setPhase("Preparando a prova visual…");
     const jobKey = `${request.product.id}:${request.size}:${request.fitPref}:${request.photoDataUrl}`;
-    if (retry) pendingJobs.delete(jobKey);
-    const form = new FormData();
-    form.append("photo", dataURLToFile(request.photoDataUrl, "cliente.jpg"));
-    form.append("product", request.product.id);
-    form.append("size", request.size);
-    form.append("fitPref", request.fitPref);
+    if (retry) { pendingJobs.delete(jobKey); completedResults.delete(jobKey); }
     try {
+      const cached = completedResults.get(jobKey);
+      if (cached) { setGenerated(cached); setDone(true); return; }
       let job = pendingJobs.get(jobKey);
       if (!job) {
+        const form = new FormData();
+        form.append("photo", dataURLToFile(request.photoDataUrl, "cliente.jpg"));
+        form.append("product", request.product.id);
+        form.append("size", request.size);
+        form.append("fitPref", request.fitPref);
         const response = await fetch("/api/public/tryon", { method: "POST", body: form, signal: controller.signal });
         if (!response.ok) throw new Error(`Falha na prova visual: ${response.status} ${await response.text()}`);
         if (response.status === 202) {
@@ -59,7 +68,7 @@ export function TryOnOverlay({ request, onClose }: { request: TryOnRequest; onCl
           setPhase("Aplicando a peça à sua foto…");
           await streamImage("/api/public/tryon", form, (dataUrl, isFinal) => {
             setGenerated(dataUrl);
-            if (isFinal) setDone(true);
+            if (isFinal) { rememberResult(jobKey, dataUrl); setDone(true); }
           }, controller.signal, undefined, false, response);
           return;
         }
@@ -76,6 +85,7 @@ export function TryOnOverlay({ request, onClose }: { request: TryOnRequest; onCl
           if (result.status === "COMPLETED") {
             if (!result.imageDataUrl) throw new Error("A prova não retornou uma imagem.");
             pendingJobs.delete(jobKey);
+            rememberResult(jobKey, result.imageDataUrl);
             setGenerated(result.imageDataUrl);
             setDone(true);
             break;

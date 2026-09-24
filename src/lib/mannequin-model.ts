@@ -12,6 +12,13 @@ export type MannequinModelMetrics = {
   inseamCm?: number;
 };
 
+export type PreparedMannequin = {
+  sourceBounds: THREE.Box3;
+  sourceCenter: THREE.Vector3;
+  scale: number;
+  position: THREE.Vector3;
+};
+
 // CC0 female display mannequin. An optimized, self-hosted model can override this URL.
 export const DEFAULT_MANNEQUIN_URL = "/models/parametric-body.glb";
 const BASE = { heightCm: 167, chestCm: 90, waistCm: 72, hipsCm: 98, shoulderCm: 40, inseamCm: 78 };
@@ -152,6 +159,13 @@ export function prepareMannequinModel(model: THREE.Object3D, body: Body, audienc
   model.scale.setScalar(scale);
   model.position.set(-center.x * scale, -bounds.min.y * scale, -center.z * scale);
   model.updateMatrixWorld(true);
+
+  return {
+    sourceBounds: bounds.clone(),
+    sourceCenter: center.clone(),
+    scale,
+    position: model.position.clone(),
+  } satisfies PreparedMannequin;
 }
 
 export function getMannequinModelSource() {

@@ -18,6 +18,7 @@ export type PhotoResult = {
   analysis: PhotoAnalysis;
   photoDataUrl: string;
   previewUrl: string;
+  source: "example" | "upload";
 };
 
 export function PhotoStep({ onDone }: { onDone: (result: PhotoResult) => void }) {
@@ -28,7 +29,7 @@ export function PhotoStep({ onDone }: { onDone: (result: PhotoResult) => void })
   const [dragging, setDragging] = useState(false);
   const [camera, setCamera] = useState(false);
 
-  async function run(file: File) {
+  async function run(file: File, source: PhotoResult["source"] = "upload") {
     setError(null);
     if (!isProbablyImage(file)) {
       setError("Esse arquivo não é uma imagem.");
@@ -46,7 +47,7 @@ export function PhotoStep({ onDone }: { onDone: (result: PhotoResult) => void })
       ]);
       setPreview(previewUrl);
       const analysis = await analyzePhoto({ data: { imageDataUrl: photoDataUrl } });
-      onDone({ analysis, photoDataUrl, previewUrl });
+      onDone({ analysis, photoDataUrl, previewUrl, source });
     } catch (cause) {
       setError(
         cause instanceof Error ? cause.message : "Não conseguimos analisar essa foto. Tente outra.",
@@ -56,12 +57,12 @@ export function PhotoStep({ onDone }: { onDone: (result: PhotoResult) => void })
     }
   }
 
-  async function useExample() {
+  async function applyExample() {
     setError(null);
     setBusy(true);
     try {
       const blob = await (await fetch(modeloImage)).blob();
-      await run(new File([blob], "modelo.jpg", { type: blob.type || "image/jpeg" }));
+      await run(new File([blob], "modelo.jpg", { type: blob.type || "image/jpeg" }), "example");
     } catch {
       setError("Não conseguimos carregar a foto de exemplo.");
       setBusy(false);
@@ -127,7 +128,7 @@ export function PhotoStep({ onDone }: { onDone: (result: PhotoResult) => void })
             <Button variant="outline" onClick={() => inputRef.current?.click()} disabled={busy}>
               Escolher arquivo
             </Button>
-            <Button variant="outline" onClick={() => void useExample()} disabled={busy}>
+            <Button variant="outline" onClick={() => void applyExample()} disabled={busy}>
               Usar foto de exemplo
             </Button>
           </div>

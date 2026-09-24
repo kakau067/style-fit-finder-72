@@ -148,6 +148,7 @@ function Index() {
           <ProfileStep
             body={body}
             profile={profile}
+            photo={photo}
             estimated
             notes={photo.analysis.notes}
             confidence={photo.analysis.confidence}

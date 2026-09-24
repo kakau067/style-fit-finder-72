@@ -1,5 +1,7 @@
+import { useState } from "react";
 import { Button, Eyebrow, Field, MeasureField, Panel, ToggleChip } from "@/components/provador/primitives";
 import { Mannequin3D } from "@/components/provador/Mannequin3D";
+import type { PhotoResult } from "@/components/provador/PhotoStep";
 import { OCCASIONS, OCCASION_LABEL, STYLE_LABEL, STYLE_TAGS } from "@/data/catalog";
 import {
   BODY_SHAPE_LABEL,
@@ -28,6 +30,7 @@ function toggle(list: string[], value: string) {
 export function ProfileStep({
   body,
   profile,
+  photo,
   estimated,
   notes,
   confidence,
@@ -38,6 +41,7 @@ export function ProfileStep({
 }: {
   body: Body;
   profile: Profile;
+  photo: PhotoResult;
   estimated: boolean;
   notes: string;
   confidence: number;
@@ -46,6 +50,7 @@ export function ProfileStep({
   onBack: () => void;
   onNext: () => void;
 }) {
+  const [view, setView] = useState<"photo" | "mannequin">("photo");
   const set = <K extends keyof Body>(key: K, value: number) => onBody({ ...body, [key]: value });
   const patch = (next: Partial<Profile>) => onProfile({ ...profile, ...next });
 
@@ -73,9 +78,27 @@ export function ProfileStep({
       </Panel>
 
       <div className="space-y-4 lg:sticky lg:top-6">
-        <Mannequin3D body={body} audience={profile.audience} />
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <Eyebrow>Quem aparece na visualização</Eyebrow>
+          <div className="flex gap-2" role="group" aria-label="Escolha da visualização">
+            <ToggleChip active={view === "photo"} onClick={() => setView("photo")}>{photo.source === "example" ? "Foto de exemplo" : "Sua foto"}</ToggleChip>
+            <ToggleChip active={view === "mannequin"} onClick={() => setView("mannequin")}>Manequim 3D</ToggleChip>
+          </div>
+        </div>
+        {view === "mannequin" ? <Mannequin3D body={body} audience={profile.audience} /> : (
+          <div className="overflow-hidden rounded-xl border border-line bg-card">
+            <div className="flex items-center justify-between border-b border-line px-4 py-3">
+              <span className="text-sm font-medium">{photo.source === "example" ? "Modelo de exemplo" : "Sua foto"}</span>
+              <span className="font-mono text-[10px] uppercase tracking-[0.12em] text-muted-foreground">Vista frontal</span>
+            </div>
+            <div className="flex h-[430px] items-center justify-center bg-secondary/30 p-3 sm:h-[520px]">
+              <img src={photo.previewUrl} alt={photo.source === "example" ? "Modelo da foto de exemplo" : "Foto enviada por você"} className="max-h-full max-w-full rounded-lg object-contain" />
+            </div>
+            <p className="border-t border-line px-4 py-3 text-xs leading-relaxed text-muted-foreground">{photo.source === "example" ? "As recomendações e a prova visual usam esta modelo de exemplo." : "As recomendações e a prova visual usam a foto enviada."} Para girar 360°, escolha Manequim 3D.</p>
+          </div>
+        )}
         <p className="px-1 text-xs leading-relaxed text-muted-foreground">
-          A forma é uma representação visual proporcional das medidas informadas. Ela não substitui a foto nem a prova virtual por IA.
+          {view === "mannequin" ? "O manequim 3D responde às medidas informadas. A aparência da pessoa na foto não pode ser reconstruída em 360° a partir de uma vista frontal." : "A foto mostra a pessoa escolhida; a prova visual com roupas está nas recomendações."}
         </p>
       </div>
 

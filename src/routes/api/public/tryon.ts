@@ -97,7 +97,7 @@ export const Route = createFileRoute("/api/public/tryon")({
         const params = new URL(request.url).searchParams;
         if (params.has("health")) return Response.json({
           provider: key ? "fal_queue" : process.env["LOVABLE_API_KEY"] ? "lovable_stream" : "none",
-          gemini: Boolean(process.env["GEMINI_API_KEY"] || process.env["GOOGLE_API_KEY"]),
+          gemini: Boolean(process.env["GEMINI_API_KEY"] || process.env["GOOGLE_API_KEY"] || process.env["GOOGLE_GENERATIVE_AI_API_KEY"] || process.env["GOOGLE_AI_API_KEY"]),
           preferred: process.env["TRYON_PROVIDER"] === "gemini" ? "gemini" : "auto",
         }, { headers: { "Cache-Control": "no-store" } });
         const id = params.get("requestId") ?? "";
@@ -114,7 +114,7 @@ export const Route = createFileRoute("/api/public/tryon")({
       POST: async ({ request }) => {
         const apiKey = process.env["FAL_KEY"];
         const gatewayKey = process.env["LOVABLE_API_KEY"];
-        const geminiKey = process.env["GEMINI_API_KEY"] || process.env["GOOGLE_API_KEY"];
+        const geminiKey = process.env["GEMINI_API_KEY"] || process.env["GOOGLE_API_KEY"] || process.env["GOOGLE_GENERATIVE_AI_API_KEY"] || process.env["GOOGLE_AI_API_KEY"];
         const preferredProvider = process.env["TRYON_PROVIDER"] === "gemini" ? "gemini" : "auto";
         if (!apiKey && !gatewayKey && !geminiKey) return new Response("Prova visual indisponível: configure GEMINI_API_KEY, FAL_KEY ou LOVABLE_API_KEY no servidor.", { status: 503 });
 

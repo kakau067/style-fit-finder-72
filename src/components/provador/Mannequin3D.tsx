@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 
-import { DEFAULT_MANNEQUIN_URL, getMannequinModelSource, loadMannequinModel, prepareMannequinModel } from "@/lib/mannequin-model";
+import { DEFAULT_MANNEQUIN_URL, getMannequinModelSource, loadMannequinModel, prepareMannequinModel, type PreparedMannequin } from "@/lib/mannequin-model";
 import { garmentTypeOf, type Product } from "@/data/catalog";
 
 import type { Body } from "@/lib/sizing";
@@ -118,6 +118,62 @@ function addJoint(
   mesh.receiveShadow = true;
   group.add(mesh);
   return mesh;
+}
+
+function fittedLathe(
+  group: THREE.Group,
+  material: THREE.Material,
+  points: THREE.Vector2[],
+  depthScale = 0.72,
+) {
+  const mesh = new THREE.Mesh(new THREE.LatheGeometry(points, 96), material);
+  mesh.scale.z = depthScale;
+  mesh.castShadow = true;
+  mesh.receiveShadow = true;
+  group.add(mesh);
+  return mesh;
+}
+
+function fittedSleeve(
+  group: THREE.Group,
+  material: THREE.Material,
+  side: -1 | 1,
+  shoulderX: number,
+  shoulderY: number,
+  length: number,
+  radius: number,
+) {
+  const elbow = length * 0.5;
+  const outward = side * Math.max(0.018, length * 0.045);
+  const path = new THREE.CatmullRomCurve3([
+    new THREE.Vector3(side * shoulderX, shoulderY, 0),
+    new THREE.Vector3(side * shoulderX + outward * 0.75, shoulderY - elbow, 0.006),
+    new THREE.Vector3(side * shoulderX + outward, shoulderY - length, 0.012),
+  ]);
+  const sleeve = new THREE.Mesh(new THREE.TubeGeometry(path, 40, radius, 20, false), material);
+  sleeve.scale.z = 0.88;
+  sleeve.castShadow = true;
+  sleeve.receiveShadow = true;
+  group.add(sleeve);
+  return sleeve;
+}
+
+function curvedLapel(
+  group: THREE.Group,
+  material: THREE.Material,
+  side: -1 | 1,
+  chest: number,
+  shoulderY: number,
+  torsoHeight: number,
+) {
+  const curve = new THREE.CatmullRomCurve3([
+    new THREE.Vector3(side * chest * 0.055, shoulderY - torsoHeight * 0.03, chest * 0.205),
+    new THREE.Vector3(side * chest * 0.105, shoulderY - torsoHeight * 0.17, chest * 0.218),
+    new THREE.Vector3(side * chest * 0.035, shoulderY - torsoHeight * 0.38, chest * 0.205),
+  ]);
+  const lapel = new THREE.Mesh(new THREE.TubeGeometry(curve, 28, Math.max(0.009, chest * 0.012), 12, false), material);
+  lapel.castShadow = true;
+  group.add(lapel);
 }
 
 export function Mannequin3D({ body, audience = "feminino", product }: { body: Body; audience?: "feminino" | "masculino"; product?: Product }) {
@@ -255,6 +311,7 @@ export function Mannequin3D({ body, audience = "feminino", product }: { body: Bo
     mannequin.add(externalModelGroup);
     let externalModel: THREE.Object3D | null = null;
     let externalModelLoaded = false;
+    let preparedExternal: PreparedMannequin | null = null;
     const modelSource = getMannequinModelSource();
 
     const skin = new THREE.MeshPhysicalMaterial({
@@ -391,9 +448,15 @@ export function Mannequin3D({ body, audience = "feminino", product }: { body: Bo
       }
     };
 
-    const buildClothing = (model: ReturnType<typeof createBodyGeometry>) => {
+    const buildClothing = (model: ReturnType<typeof createBodyGeometry>, prepared?: PreparedMannequin | null) => {
       clearGroup(clothing);
       clearGroup(accessories);
+
+      // The garment frame always mirrors the loaded GLB root exactly. Geometry
+      // is authored in metres, then converted into that shared source frame.
+      clothing.position.set(0, 0, 0);
+      clothing.scale.setScalar(1);
+      clothing.rotation.set(0, 0, 0);
 
       const garmentConfig = GARMENTS.find((item) => item.value === styleRef.current.garment) ?? GARMENTS[0]!;
       const fabric = new THREE.MeshPhysicalMaterial({
@@ -402,111 +465,105 @@ export function Mannequin3D({ body, audience = "feminino", product }: { body: Bo
         clearcoat: styleRef.current.garment === "blazer" ? 0.03 : 0.12,
       });
 
-      const torsoRadius = Math.max(model.chest * 0.275, 0.22);
-      const dress = styleRef.current.garment === "vestido";
+      const selected = styleRef.current.garment;
+      const dress = selected === "vestido";
       const waistY = model.legHeight + model.torsoHeight * 0.43;
-      const torso = new THREE.Mesh(
-        new THREE.LatheGeometry(
-          [
-            new THREE.Vector2(Math.max(model.hips * 0.245, 0.22), model.legHeight + model.torsoHeight * 0.02),
-            new THREE.Vector2(Math.max(model.hips * 0.255, 0.23), model.legHeight + model.torsoHeight * 0.11),
-            new THREE.Vector2(Math.max(model.waist * 0.222, 0.20), waistY),
-            new THREE.Vector2(Math.max(model.chest * 0.253, 0.22), model.legHeight + model.torsoHeight * 0.7),
-            new THREE.Vector2(torsoRadius, model.legHeight + model.torsoHeight * 0.86),
-            new THREE.Vector2(torsoRadius * 0.97, model.shoulderY + 0.015),
-            new THREE.Vector2(Math.max(model.chest * 0.16, 0.13), model.shoulderY + 0.035),
-          ],
-          96,
-        ),
-        fabric,
-      );
-      torso.castShadow = true;
-      torso.receiveShadow = true;
-      if (styleRef.current.garment === "basico") {
-        torso.geometry.dispose();
-        fabric.dispose();
-      } else if (styleRef.current.garment === "calca" || styleRef.current.garment === "saia") {
-        torso.geometry.dispose();
-      } else {
-        clothing.add(torso);
+      const hipRadius = Math.max(model.hips * 0.245, 0.215);
+      const waistRadius = Math.max(model.waist * 0.218, 0.185);
+      const chestRadius = Math.max(model.chest * 0.252, 0.215);
+      const shoulderRadius = Math.max(current.shoulderCm / 200 + 0.018, chestRadius * 0.94);
+      const ease = selected === "blazer" ? 1.08 : selected === "camisa" ? 1.055 : 1.025;
+      const torsoBottom = selected === "blazer" || selected === "camisa"
+        ? model.legHeight - model.torsoHeight * 0.045
+        : model.legHeight + model.torsoHeight * 0.06;
+
+      if (selected === "camisa" || selected === "blazer" || selected === "camiseta" || dress) {
+        fittedLathe(clothing, fabric, [
+          new THREE.Vector2(hipRadius * ease, torsoBottom),
+          new THREE.Vector2(hipRadius * ease * 1.015, model.legHeight + model.torsoHeight * 0.10),
+          new THREE.Vector2(waistRadius * ease, waistY),
+          new THREE.Vector2(chestRadius * ease, model.legHeight + model.torsoHeight * 0.72),
+          new THREE.Vector2(shoulderRadius * ease, model.shoulderY - model.torsoHeight * 0.055),
+          new THREE.Vector2(chestRadius * 0.63, model.shoulderY + 0.012),
+        ], selected === "blazer" ? 0.76 : 0.71);
       }
 
       if (dress) {
         const hemY = Math.max(model.legHeight * 0.48, 0.41);
         // The skirt starts under the bodice and flows to mid-calf; a continuous
         // outer surface hides the underlying legs and waist from every angle.
-        const skirt = new THREE.Mesh(
-          new THREE.LatheGeometry([
-            new THREE.Vector2(model.hips * 0.40, hemY),
-            new THREE.Vector2(model.hips * 0.365, hemY + 0.045),
-            new THREE.Vector2(model.hips * 0.32, model.legHeight * 0.76),
-            new THREE.Vector2(model.hips * 0.275, model.legHeight + 0.02),
-            new THREE.Vector2(Math.max(model.waist * 0.225, 0.20), waistY + 0.025),
-          ], 96),
-          fabric,
+        fittedLathe(clothing, fabric, [
+          new THREE.Vector2(model.hips * 0.40, hemY),
+          new THREE.Vector2(model.hips * 0.38, hemY + 0.045),
+          new THREE.Vector2(model.hips * 0.32, model.legHeight * 0.76),
+          new THREE.Vector2(hipRadius * 1.04, model.legHeight + 0.02),
+          new THREE.Vector2(waistRadius * 1.03, waistY + 0.025),
+        ], 0.76);
+        for (const side of [-1, 1] as const) fittedSleeve(
+          clothing, fabric, side, shoulderRadius * 0.95, model.shoulderY - 0.015,
+          model.height * 0.16, Math.max(model.chest * 0.075, 0.065),
         );
-        skirt.castShadow = true;
-        skirt.receiveShadow = true;
-        clothing.add(skirt);
-        for (const side of [-1, 1]) {
-          const sleeve = addCapsule(clothing, fabric, Math.max(model.chest * 0.095, 0.082),
-            model.height * 0.075, new THREE.Vector3(side * model.chest * 0.27, model.shoulderY - model.height * 0.052, 0), 32);
-          sleeve.rotation.z = side * -0.22;
+      }
+
+      if (selected === "saia") {
+        fittedLathe(clothing, fabric, [
+          new THREE.Vector2(model.hips * 0.38, model.legHeight * 0.56),
+          new THREE.Vector2(model.hips * 0.365, model.legHeight * 0.60),
+          new THREE.Vector2(model.hips * 0.31, model.legHeight * 0.78),
+          new THREE.Vector2(hipRadius * 1.04, model.legHeight + 0.015),
+          new THREE.Vector2(waistRadius * 1.035, waistY + 0.018),
+        ], 0.76);
+      }
+
+      if (selected === "calca") {
+        fittedLathe(clothing, fabric, [
+          new THREE.Vector2(model.hips * 0.19, model.legHeight * 0.78),
+          new THREE.Vector2(hipRadius * 1.03, model.legHeight + 0.01),
+          new THREE.Vector2(waistRadius * 1.035, waistY + 0.018),
+        ], 0.76);
+        const legOffset = Math.max(model.hips * 0.105, 0.074);
+        for (const side of [-1, 1] as const) {
+          const leg = fittedLathe(clothing, fabric, [
+            new THREE.Vector2(model.hips * 0.088, 0.035),
+            new THREE.Vector2(model.hips * 0.095, model.legHeight * 0.35),
+            new THREE.Vector2(model.hips * 0.108, model.legHeight * 0.72),
+            new THREE.Vector2(model.hips * 0.12, model.legHeight * 0.82),
+          ], 0.78);
+          leg.position.x = side * legOffset;
         }
       }
 
-      if (styleRef.current.garment === "saia") {
-        const skirt = new THREE.Mesh(
-          new THREE.CylinderGeometry(model.hips * 0.26, model.hips * 0.38, model.legHeight * 0.42, 64, 6),
-          fabric,
-        );
-        skirt.position.y = model.legHeight * 0.79;
-        skirt.castShadow = true;
-        skirt.receiveShadow = true;
-        clothing.add(skirt);
-      }
-
-      if (styleRef.current.garment === "calca") {
-        const pantsMaterial = fabric;
-        for (const side of [-1, 1]) {
-          const leg = new THREE.Mesh(
-            new THREE.CylinderGeometry(model.hips * 0.105, model.hips * 0.082, model.legHeight * 0.98, 48, 6),
-            pantsMaterial,
-          );
-          leg.position.set(side * Math.max(model.hips * 0.1, 0.075), model.legHeight * 0.5, 0);
-          leg.castShadow = true;
-          leg.receiveShadow = true;
-          clothing.add(leg);
-        }
-      }
-
-      if (styleRef.current.garment === "camisa" || styleRef.current.garment === "blazer" || styleRef.current.garment === "camiseta") {
-        if (styleRef.current.garment !== "camiseta") {
+      if (selected === "camisa" || selected === "blazer" || selected === "camiseta") {
+        if (selected !== "camiseta") {
           const lapelMaterial = new THREE.MeshPhysicalMaterial({
-            color: styleRef.current.garment === "blazer" ? 0x2e3033 : 0xd8d5c8,
+            color: selected === "blazer" ? 0x2e3033 : 0xd8d5c8,
             roughness: 0.78,
           });
-          for (const side of [-1, 1]) {
-            const lapel = new THREE.Mesh(
-              new THREE.BoxGeometry(model.chest * 0.075, model.torsoHeight * 0.36, 0.018),
-              lapelMaterial,
-            );
-            lapel.position.set(side * model.chest * 0.07, model.shoulderY - model.torsoHeight * 0.18, model.chest * 0.2);
-            lapel.rotation.z = side * -0.2;
-            lapel.rotation.y = side * 0.08;
-            lapel.castShadow = true;
-            clothing.add(lapel);
-          }
+          for (const side of [-1, 1] as const) curvedLapel(clothing, lapelMaterial, side, model.chest, model.shoulderY, model.torsoHeight);
         }
-        for (const side of [-1, 1]) {
-          const sleeve = addCapsule(
-            clothing, fabric, Math.max(model.chest * 0.085, 0.07),
-            model.height * 0.2,
-            new THREE.Vector3(side * model.chest * 0.255, model.shoulderY - model.height * 0.115, 0),
-            24,
+        const sleeveLength = selected === "camiseta" ? model.height * 0.12 : model.height * 0.32;
+        for (const side of [-1, 1] as const) fittedSleeve(
+          clothing, fabric, side, shoulderRadius * 0.96, model.shoulderY - 0.012,
+          sleeveLength, Math.max(model.chest * (selected === "blazer" ? 0.078 : 0.073), 0.062),
+        );
+      }
+
+      if (selected === "basico") fabric.dispose();
+
+      if (prepared) {
+        const inverseScale = 1 / prepared.scale;
+        clothing.position.copy(prepared.position);
+        clothing.scale.setScalar(prepared.scale);
+        clothing.traverse((object) => {
+          const mesh = object as THREE.Mesh;
+          if (!mesh.isMesh) return;
+          mesh.geometry.scale(inverseScale, inverseScale, inverseScale);
+          mesh.position.set(
+            prepared.sourceCenter.x + mesh.position.x * inverseScale,
+            prepared.sourceBounds.min.y + mesh.position.y * inverseScale,
+            prepared.sourceCenter.z + mesh.position.z * inverseScale,
           );
-          sleeve.rotation.z = side * -0.13;
-        }
+        });
       }
 
       if (styleRef.current.accessory === "oculos") {
@@ -557,9 +614,9 @@ export function Mannequin3D({ body, audience = "feminino", product }: { body: Bo
       const current = bodyRef.current;
 
       if (externalModel && externalModelLoaded) {
-        prepareMannequinModel(externalModel, current, audienceRef.current);
+        preparedExternal = prepareMannequinModel(externalModel, current, audienceRef.current);
         const garmentModel = createBodyGeometry(current);
-        buildClothing(garmentModel);
+        buildClothing(garmentModel, preparedExternal);
         garmentModel.geometry.dispose();
         clothing.visible = true;
         accessories.visible = true;
@@ -568,6 +625,7 @@ export function Mannequin3D({ body, audience = "feminino", product }: { body: Bo
       }
 
       const model = createBodyGeometry(current);
+      preparedExternal = null;
 
       bodyMesh.geometry.dispose();
       bodyMesh.geometry = model.geometry;
@@ -639,7 +697,7 @@ export function Mannequin3D({ body, audience = "feminino", product }: { body: Bo
         shin.scale.x = 0.92;
       }
 
-      buildClothing(model);
+      buildClothing(model, null);
 
       frameCamera(height);
     };

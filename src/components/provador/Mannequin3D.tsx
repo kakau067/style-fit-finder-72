@@ -120,29 +120,6 @@ function addJoint(
   return mesh;
 }
 
-// The fitted body remains a single continuous surface. The garment preview follows
-// its morph targets instead of intersecting the legs with procedural cylinders.
-function makeBodyPreviewMaterial(style: { value: number; color: THREE.Color }, bounds: { minY: { value: number }; spanY: { value: number } }) {
-  const material = new THREE.MeshPhysicalMaterial({
-    color: 0xd2d3d6, roughness: 0.76, metalness: 0, clearcoat: 0.025,
-  });
-  material.onBeforeCompile = (shader) => {
-    shader.uniforms.garmentMode = style;
-    shader.uniforms.garmentColor = { value: style.color };
-    shader.uniforms.bodyMinY = bounds.minY;
-    shader.uniforms.bodySpanY = bounds.spanY;
-    shader.vertexShader = shader.vertexShader
-      .replace("#include <common>", "#include <common>\nvarying vec3 vBodyPosition;")
-      .replace("#include <morphtarget_vertex>", "#include <morphtarget_vertex>\nvBodyPosition = transformed;");
-    shader.fragmentShader = shader.fragmentShader
-      .replace("#include <common>", "#include <common>\nvarying vec3 vBodyPosition;\nuniform float garmentMode;\nuniform vec3 garmentColor;\nuniform float bodyMinY;\nuniform float bodySpanY;\nfloat garmentMask(vec3 p) {\n  float y = (p.y - bodyMinY) / max(bodySpanY, .01);\n  float x = abs(p.x);\n  float torso = smoothstep(.52, .53, y) * (1. - smoothstep(.865, .875, y));\n  float sleeves = smoothstep(.22, .26, x) * smoothstep(.54, .57, y) * (1. - smoothstep(.83, .87, y));\n  float top = max(torso * (1. - smoothstep(.35, .4, x)), sleeves);\n  float trousers = smoothstep(.075, .088, y) * (1. - smoothstep(.54, .56, y)) * (1. - smoothstep(.32, .37, x));\n  float dress = smoothstep(.29, .31, y) * (1. - smoothstep(.865, .875, y)) * (1. - smoothstep(.29, .35, x));\n  float skirt = smoothstep(.29, .31, y) * (1. - smoothstep(.54, .56, y)) * (1. - smoothstep(.29, .35, x));\n  if (garmentMode < .5) return 0.;\n  if (garmentMode < 2.5 || garmentMode > 5.5) return top;\n  if (garmentMode < 3.5) return dress;\n  if (garmentMode < 4.5) return trousers;\n  return skirt;\n}")
-      .replace("#include <color_fragment>", "#include <color_fragment>\nfloat garmentCoverage = garmentMask(vBodyPosition);\ndiffuseColor.rgb = mix(diffuseColor.rgb, garmentColor, garmentCoverage);")
-      .replace("#include <roughnessmap_fragment>", "#include <roughnessmap_fragment>\nroughnessFactor = mix(roughnessFactor, 0.86, garmentCoverage);");
-  };
-  material.customProgramCacheKey = () => "fitted-garment-preview-v1";
-  return material;
-}
-
 export function Mannequin3D({ body, audience = "feminino", product }: { body: Body; audience?: "feminino" | "masculino"; product?: Product }) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const cameraActionRef = useRef<((action: CameraAction) => void) | null>(null);
@@ -279,8 +256,6 @@ export function Mannequin3D({ body, audience = "feminino", product }: { body: Bo
     let externalModel: THREE.Object3D | null = null;
     let externalModelLoaded = false;
     const modelSource = getMannequinModelSource();
-    const fabricStyle = { value: 0, color: new THREE.Color(GARMENTS[0]!.color) };
-    const shaderBounds = { minY: { value: -0.78 }, spanY: { value: 1.78 } };
 
     const skin = new THREE.MeshPhysicalMaterial({
       color: 0xd2d3d6,
@@ -427,16 +402,21 @@ export function Mannequin3D({ body, audience = "feminino", product }: { body: Bo
         clearcoat: styleRef.current.garment === "blazer" ? 0.03 : 0.12,
       });
 
-      const torsoRadius = Math.max(model.chest * 0.24, 0.18);
+      const torsoRadius = Math.max(model.chest * 0.275, 0.22);
+      const dress = styleRef.current.garment === "vestido";
+      const waistY = model.legHeight + model.torsoHeight * 0.43;
       const torso = new THREE.Mesh(
         new THREE.LatheGeometry(
           [
-            new THREE.Vector2(Math.max(model.hips * 0.225, 0.18), model.legHeight + model.torsoHeight * 0.04),
-            new THREE.Vector2(Math.max(model.waist * 0.215, 0.17), model.legHeight + model.torsoHeight * 0.43),
-            new THREE.Vector2(torsoRadius * 1.02, model.legHeight + model.torsoHeight * 0.82),
-            new THREE.Vector2(torsoRadius * 1.03, model.shoulderY + 0.015),
+            new THREE.Vector2(Math.max(model.hips * 0.245, 0.22), model.legHeight + model.torsoHeight * 0.02),
+            new THREE.Vector2(Math.max(model.hips * 0.255, 0.23), model.legHeight + model.torsoHeight * 0.11),
+            new THREE.Vector2(Math.max(model.waist * 0.222, 0.20), waistY),
+            new THREE.Vector2(Math.max(model.chest * 0.253, 0.22), model.legHeight + model.torsoHeight * 0.7),
+            new THREE.Vector2(torsoRadius, model.legHeight + model.torsoHeight * 0.86),
+            new THREE.Vector2(torsoRadius * 0.97, model.shoulderY + 0.015),
+            new THREE.Vector2(Math.max(model.chest * 0.16, 0.13), model.shoulderY + 0.035),
           ],
-          64,
+          96,
         ),
         fabric,
       );
@@ -451,15 +431,28 @@ export function Mannequin3D({ body, audience = "feminino", product }: { body: Bo
         clothing.add(torso);
       }
 
-      if (styleRef.current.garment === "vestido") {
+      if (dress) {
+        const hemY = Math.max(model.legHeight * 0.48, 0.41);
+        // The skirt starts under the bodice and flows to mid-calf; a continuous
+        // outer surface hides the underlying legs and waist from every angle.
         const skirt = new THREE.Mesh(
-          new THREE.CylinderGeometry(model.hips * 0.27, model.hips * 0.42, model.torsoHeight * 0.78, 64, 6),
+          new THREE.LatheGeometry([
+            new THREE.Vector2(model.hips * 0.40, hemY),
+            new THREE.Vector2(model.hips * 0.365, hemY + 0.045),
+            new THREE.Vector2(model.hips * 0.32, model.legHeight * 0.76),
+            new THREE.Vector2(model.hips * 0.275, model.legHeight + 0.02),
+            new THREE.Vector2(Math.max(model.waist * 0.225, 0.20), waistY + 0.025),
+          ], 96),
           fabric,
         );
-        skirt.position.y = model.legHeight + model.torsoHeight * 0.08;
         skirt.castShadow = true;
         skirt.receiveShadow = true;
         clothing.add(skirt);
+        for (const side of [-1, 1]) {
+          const sleeve = addCapsule(clothing, fabric, Math.max(model.chest * 0.095, 0.082),
+            model.height * 0.075, new THREE.Vector3(side * model.chest * 0.27, model.shoulderY - model.height * 0.052, 0), 32);
+          sleeve.rotation.z = side * -0.22;
+        }
       }
 
       if (styleRef.current.garment === "saia") {
@@ -565,20 +558,10 @@ export function Mannequin3D({ body, audience = "feminino", product }: { body: Bo
 
       if (externalModel && externalModelLoaded) {
         prepareMannequinModel(externalModel, current, audienceRef.current);
-        const fittedBody = externalModel.getObjectByName("Body") as THREE.Mesh | undefined;
-        if (fittedBody?.isMesh) {
-          fittedBody.geometry.computeBoundingBox();
-          const bounds = fittedBody.geometry.boundingBox;
-          if (bounds) {
-            shaderBounds.minY.value = bounds.min.y;
-            shaderBounds.spanY.value = Math.max(bounds.max.y - bounds.min.y, 0.01);
-          }
-        }
-        const choice = GARMENTS.findIndex((item) => item.value === styleRef.current.garment);
-        fabricStyle.value = Math.max(choice, 0);
-        fabricStyle.color.set(productColorRef.current ?? GARMENTS[Math.max(choice, 0)]!.color);
-        clothing.visible = false;
-        buildFittedAccessories(current.heightCm / 100);
+        const garmentModel = createBodyGeometry(current);
+        buildClothing(garmentModel);
+        garmentModel.geometry.dispose();
+        clothing.visible = true;
         accessories.visible = true;
         frameCamera(current.heightCm / 100);
         return;
@@ -675,7 +658,7 @@ export function Mannequin3D({ body, audience = "feminino", product }: { body: Bo
           externalModel = loadedModel;
           if (modelSource === DEFAULT_MANNEQUIN_URL) {
             const fittedBody = loadedModel.getObjectByName("Body") as THREE.Mesh | undefined;
-            if (fittedBody?.isMesh) fittedBody.material = makeBodyPreviewMaterial(fabricStyle, shaderBounds);
+            if (fittedBody?.isMesh) fittedBody.material = skin.clone();
           }
           externalModelGroup.add(loadedModel);
           externalModelLoaded = true;

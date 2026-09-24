@@ -97,10 +97,11 @@ export const Route = createFileRoute("/api/public/tryon")({
         if (params.has("health")) return Response.json({ provider: key ? "fal_queue" : process.env["LOVABLE_API_KEY"] ? "lovable_stream" : "none" });
         const id = params.get("requestId") ?? "";
         const ticket = params.get("ticket") ?? "";
+        const responseUrl = params.get("responseUrl") ?? "";
         const model = params.get("model") === "fashn" ? "fashn" : "idm";
-        if (!key || !validTryOnRequest(id, ticket, key, model)) return new Response("Prova não encontrada", { status: 404 });
+        if (!key || !validTryOnRequest(id, ticket, key, model, responseUrl)) return new Response("Prova não encontrada", { status: 404 });
         try {
-          return Response.json(await pollFalTryOn(key, id, model), { headers: { "Cache-Control": "no-store" } });
+          return Response.json(await pollFalTryOn(key, id, model, responseUrl), { headers: { "Cache-Control": "no-store" } });
         } catch (cause) {
           return new Response(cause instanceof Error ? cause.message : "Falha ao acompanhar a prova.", { status: 502 });
         }
@@ -116,6 +117,7 @@ export const Route = createFileRoute("/api/public/tryon")({
         const productId = form.get("product");
         const size = form.get("size");
         const fitPref = form.get("fitPref");
+        const renderMode = form.get("renderMode") ?? "balanced";
 
         if (!(photo instanceof File) || photo.size === 0) return new Response("Foto do cliente é obrigatória", { status: 400 });
         if (!photo.type.startsWith("image/")) return new Response("O arquivo enviado não é uma imagem", { status: 400 });
@@ -126,6 +128,7 @@ export const Route = createFileRoute("/api/public/tryon")({
         if (!product) return new Response("Peça desconhecida", { status: 404 });
         if (typeof size !== "string" || !(SIZES as readonly string[]).includes(size)) return new Response("Tamanho inválido", { status: 400 });
         if (fitPref !== "justo" && fitPref !== "acertado" && fitPref !== "solto") return new Response("Preferência de caimento inválida", { status: 400 });
+        if (renderMode !== "fast" && renderMode !== "balanced" && renderMode !== "quality") return new Response("Modo de geração inválido", { status: 400 });
 
         try {
           const garment = await garmentFileFromReference(product.images.front, new URL(request.url).origin);
@@ -138,9 +141,9 @@ export const Route = createFileRoute("/api/public/tryon")({
               model_image: humanImageUrl,
               garment_image: garmentImageUrl,
               category: type === "dress" ? "one-pieces" : type === "top" ? "tops" : "bottoms",
-              mode: "balanced",
+              mode: renderMode === "fast" ? "performance" : renderMode,
               garment_photo_type: "auto",
-              output_format: "png",
+              output_format: renderMode === "fast" ? "jpeg" : "png",
             });
             return Response.json({ provider: "fal_queue", ...queued }, { status: 202, headers: { "Cache-Control": "no-store" } });
           } else {

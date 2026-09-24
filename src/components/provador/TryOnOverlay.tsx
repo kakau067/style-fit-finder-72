@@ -12,8 +12,9 @@ const Mannequin3D = lazy(() => import("@/components/provador/Mannequin3D").then(
 
 export type TryOnRequest = { product: Product; size: Size; fitPref: FitPref; photoDataUrl: string; body: Body; audience: "feminino" | "masculino" };
 type View = "photo" | "mannequin" | "detail";
-type QueueJob = { requestId: string; ticket: string; model?: "idm" | "fashn" };
+type QueueJob = { requestId: string; ticket: string; model?: "idm" | "fashn"; responseUrl?: string };
 const pendingJobs = new Map<string, QueueJob>();
+const pendingSubmissions = new Map<string, Promise<{ job?: QueueJob; response?: Response }>>();
 const completedResults = new Map<string, string>();
 
 function rememberResult(key: string, image: string) {
@@ -40,19 +41,20 @@ export function TryOnOverlay({ request, onClose }: { request: TryOnRequest; onCl
   const [compare, setCompare] = useState(50);
   const [generated, setGenerated] = useState<string | null>(null);
   const [region, setRegion] = useState(() => garmentRegion(request.product));
-  const [view, setView] = useState<View>("photo");
+  const [view, setView] = useState<View>("mannequin");
+  const viewRef = useRef<View>("mannequin");
   const [detailImage, setDetailImage] = useState(() => request.product.images.detail !== request.product.images.front ? request.product.images.detail : request.product.images.front);
   const abortRef = useRef<AbortController | null>(null);
   const productPhotos = (["front", "back", "detail"] as const)
     .filter((kind, index, kinds) => kinds.findIndex((other) => request.product.images[other] === request.product.images[kind]) === index);
 
-  const start = useCallback(async (retry = false) => {
+  const start = useCallback(async (retry = false, renderMode: "fast" | "quality" = "fast") => {
     abortRef.current?.abort();
     const controller = new AbortController();
     abortRef.current = controller;
     setImage(null); setGenerated(null); setDone(false); setError(null); setRunning(true); setCompare(50);
     setPhase("Preparando a prova visual…");
-    const jobKey = `${request.product.id}:${request.size}:${request.fitPref}:${request.photoDataUrl}`;
+    const jobKey = `${request.product.id}:${request.product.images.front}:${renderMode}:${request.photoDataUrl}`;
     if (retry) {
       pendingJobs.delete(jobKey);
       completedResults.delete(jobKey);
@@ -60,7 +62,7 @@ export function TryOnOverlay({ request, onClose }: { request: TryOnRequest; onCl
     }
     try {
       const cached = completedResults.get(jobKey);
-      if (cached) { setGenerated(cached); setDone(true); return; }
+      if (cached) { setGenerated(cached); setDone(true); if (viewRef.current === "mannequin") { viewRef.current = "photo"; setView("photo"); } return; }
       let job = pendingJobs.get(jobKey);
       if (!job) {
         const form = new FormData();
@@ -68,19 +70,32 @@ export function TryOnOverlay({ request, onClose }: { request: TryOnRequest; onCl
         form.append("product", request.product.id);
         form.append("size", request.size);
         form.append("fitPref", request.fitPref);
-        const response = await fetch("/api/public/tryon", { method: "POST", body: form, signal: controller.signal });
-        if (!response.ok) throw new Error(`Falha na prova visual: ${response.status} ${await response.text()}`);
-        if (response.status === 202) {
-          const submitted = (await response.json()) as QueueJob;
-          job = submitted;
-          pendingJobs.set(jobKey, job);
-        } else {
+        form.append("renderMode", renderMode);
+        let submitting = pendingSubmissions.get(jobKey);
+        if (!submitting) {
+          // Keep submission alive if the dialog closes. This prevents an
+          // expensive second generation when the visitor opens it again.
+          submitting = (async () => {
+            const response = await fetch("/api/public/tryon", { method: "POST", body: form });
+            if (!response.ok) throw new Error(`Falha na prova visual: ${response.status} ${await response.text()}`);
+            if (response.status !== 202) return { response };
+            const queued = (await response.json()) as QueueJob;
+            pendingJobs.set(jobKey, queued);
+            return { job: queued };
+          })();
+          pendingSubmissions.set(jobKey, submitting);
+          void submitting.finally(() => pendingSubmissions.delete(jobKey)).catch(() => {});
+        }
+        const { job: queued, response } = await submitting;
+        controller.signal.throwIfAborted();
+        job = queued;
+        if (response) {
           // The gateway streams previews directly. Never submit the same costly
           // generation again when an SSE connection ends without an image.
           setPhase("Aplicando a peça à sua foto…");
           await streamImage("/api/public/tryon", form, (dataUrl, isFinal) => {
             setGenerated(dataUrl);
-            if (isFinal) { rememberResult(jobKey, dataUrl); setDone(true); }
+            if (isFinal) { rememberResult(jobKey, dataUrl); setDone(true); if (viewRef.current === "mannequin") { viewRef.current = "photo"; setView("photo"); } }
           }, controller.signal, undefined, false, response);
           return;
         }
@@ -88,7 +103,7 @@ export function TryOnOverlay({ request, onClose }: { request: TryOnRequest; onCl
       let failures = 0;
       while (job) {
         controller.signal.throwIfAborted();
-        const statusUrl = `/api/public/tryon?requestId=${encodeURIComponent(job.requestId)}&ticket=${encodeURIComponent(job.ticket)}&model=${job.model ?? "idm"}`;
+        const statusUrl = `/api/public/tryon?requestId=${encodeURIComponent(job.requestId)}&ticket=${encodeURIComponent(job.ticket)}&model=${job.model ?? "idm"}&responseUrl=${encodeURIComponent(job.responseUrl ?? "")}`;
         try {
           const response = await fetch(statusUrl, { signal: controller.signal, cache: "no-store" });
           if (!response.ok) throw new Error(`Falha ao acompanhar a prova: ${response.status} ${await response.text()}`);
@@ -100,6 +115,7 @@ export function TryOnOverlay({ request, onClose }: { request: TryOnRequest; onCl
             rememberResult(jobKey, result.imageDataUrl);
             setGenerated(result.imageDataUrl);
             setDone(true);
+            if (viewRef.current === "mannequin") { viewRef.current = "photo"; setView("photo"); }
             break;
           }
           setPhase(result.status === "IN_QUEUE"
@@ -144,7 +160,7 @@ export function TryOnOverlay({ request, onClose }: { request: TryOnRequest; onCl
         </div>
         <div role="tablist" aria-label="Modos de visualização da peça" className="mt-5 flex flex-wrap gap-2">
           {([ ["photo", "Foto: provar em mim"], ["mannequin", "Manequim 360°"], ["detail", "Detalhes e tecido"] ] as const).map(([value, label]) => (
-            <button key={value} role="tab" type="button" aria-selected={view === value} onClick={() => setView(value)} className={`rounded-full border px-4 py-2 text-xs font-medium transition ${view === value ? "border-primary bg-primary text-primary-foreground" : "border-line bg-background text-foreground hover:bg-secondary"}`}>{label}</button>
+            <button key={value} role="tab" type="button" aria-selected={view === value} onClick={() => { viewRef.current = value; setView(value); }} className={`rounded-full border px-4 py-2 text-xs font-medium transition ${view === value ? "border-primary bg-primary text-primary-foreground" : "border-line bg-background text-foreground hover:bg-secondary"}`}>{label}</button>
           ))}
         </div>
         <div className="mt-5 grid gap-5 lg:grid-cols-[minmax(0,1fr)_280px]">
@@ -182,12 +198,14 @@ export function TryOnOverlay({ request, onClose }: { request: TryOnRequest; onCl
             </>}
           </div>
           <div className="space-y-4">
-            <div className="grid grid-cols-3 gap-2">{productPhotos.map((kind) => <button type="button" key={kind} onClick={() => { setDetailImage(request.product.images[kind]); setView("detail"); }} aria-label={`Ampliar foto de ${ { front: "frente", back: "costas", detail: "detalhe" }[kind] } de ${request.product.name}`}><img src={request.product.images[kind]} alt="" className="aspect-square w-full rounded-lg border border-line object-cover hover:border-primary" /></button>)}</div>
+            <div className="grid grid-cols-3 gap-2">{productPhotos.map((kind) => <button type="button" key={kind} onClick={() => { setDetailImage(request.product.images[kind]); viewRef.current = "detail"; setView("detail"); }} aria-label={`Ampliar foto de ${ { front: "frente", back: "costas", detail: "detalhe" }[kind] } de ${request.product.name}`}><img src={request.product.images[kind]} alt="" className="aspect-square w-full rounded-lg border border-line object-cover hover:border-primary" /></button>)}</div>
             <p className="text-sm leading-relaxed text-secondary-foreground">{request.product.tagline}</p>
-            {view === "mannequin" ? <p className="text-xs leading-relaxed text-muted-foreground">Gire e aproxime o manequim para ver a forma por todos os lados. A foto da pessoa continua frontal; o 3D representa medidas e cor, sem reconstruir texturas ou costas que não foram fotografadas.</p> : null}
+            {view === "mannequin" ? <p className="text-xs leading-relaxed text-muted-foreground">Gire e aproxime o manequim para ver a forma por todos os lados. A roupa 3D representa a modelagem e cor; abra Detalhes e tecido para ver a fotografia real da peça.</p> : null}
+            {running ? <p role="status" className="text-sm text-foreground">{phase}</p> : null}
             {error ? <ErrorNote>{error}</ErrorNote> : null}
             {request.product.storeUrl ? <a href={request.product.storeUrl} target="_blank" rel="noreferrer" className="block"><Button className="w-full">Comprar agora</Button></a> : null}
             <Button variant="outline" onClick={() => void start(true)} disabled={running} className="w-full">{running ? "Gerando…" : "Gerar de novo"}</Button>
+            {!running && done ? <Button variant="outline" onClick={() => void start(false, "quality")} className="w-full">Gerar foto em alta qualidade</Button> : null}
             {running ? <p className="text-xs text-muted-foreground">Você pode fechar e voltar a esta peça; a geração em andamento será retomada.</p> : null}
             <p className="text-xs leading-relaxed text-muted-foreground">A foto original é preservada fora da área da peça escolhida. Ajuste os limites se necessário; dentro dessa área, a IA pode alterar detalhes.</p>
           </div>

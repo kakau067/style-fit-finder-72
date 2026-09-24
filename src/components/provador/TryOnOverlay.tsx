@@ -1,13 +1,17 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
 
 import { Button, ErrorNote, Eyebrow } from "@/components/provador/primitives";
+import { ZoomableImage } from "@/components/provador/ZoomableImage";
 import type { Product } from "@/data/catalog";
 import { dataURLToFile } from "@/lib/image-utils";
 import { streamImage } from "@/lib/stream-image";
 import { compositeTryOn, garmentRegion } from "@/lib/tryon-composite";
-import type { FitPref, Size } from "@/lib/sizing";
+import type { Body, FitPref, Size } from "@/lib/sizing";
 
-export type TryOnRequest = { product: Product; size: Size; fitPref: FitPref; photoDataUrl: string };
+const Mannequin3D = lazy(() => import("@/components/provador/Mannequin3D").then(({ Mannequin3D }) => ({ default: Mannequin3D })));
+
+export type TryOnRequest = { product: Product; size: Size; fitPref: FitPref; photoDataUrl: string; body: Body; audience: "feminino" | "masculino" };
+type View = "photo" | "mannequin" | "detail";
 type QueueJob = { requestId: string; ticket: string; model?: "idm" | "fashn" };
 const pendingJobs = new Map<string, QueueJob>();
 const completedResults = new Map<string, string>();
@@ -36,7 +40,11 @@ export function TryOnOverlay({ request, onClose }: { request: TryOnRequest; onCl
   const [compare, setCompare] = useState(50);
   const [generated, setGenerated] = useState<string | null>(null);
   const [region, setRegion] = useState(() => garmentRegion(request.product));
+  const [view, setView] = useState<View>("photo");
+  const [detailImage, setDetailImage] = useState(() => request.product.images.detail !== request.product.images.front ? request.product.images.detail : request.product.images.front);
   const abortRef = useRef<AbortController | null>(null);
+  const productPhotos = (["front", "back", "detail"] as const)
+    .filter((kind, index, kinds) => kinds.findIndex((other) => request.product.images[other] === request.product.images[kind]) === index);
 
   const start = useCallback(async (retry = false) => {
     abortRef.current?.abort();
@@ -45,7 +53,11 @@ export function TryOnOverlay({ request, onClose }: { request: TryOnRequest; onCl
     setImage(null); setGenerated(null); setDone(false); setError(null); setRunning(true); setCompare(50);
     setPhase("Preparando a prova visual…");
     const jobKey = `${request.product.id}:${request.size}:${request.fitPref}:${request.photoDataUrl}`;
-    if (retry) { pendingJobs.delete(jobKey); completedResults.delete(jobKey); }
+    if (retry) {
+      pendingJobs.delete(jobKey);
+      completedResults.delete(jobKey);
+      setDetailImage(request.product.images.detail !== request.product.images.front ? request.product.images.detail : request.product.images.front);
+    }
     try {
       const cached = completedResults.get(jobKey);
       if (cached) { setGenerated(cached); setDone(true); return; }
@@ -130,8 +142,31 @@ export function TryOnOverlay({ request, onClose }: { request: TryOnRequest; onCl
         <div><Eyebrow>Prova visual da peça</Eyebrow><h3 className="mt-2 font-serif text-2xl text-foreground">{request.product.name}</h3><p className="mt-1 text-sm text-secondary-foreground">Tamanho <span className="font-mono text-foreground">{request.size}</span> · caimento {request.fitPref}</p></div>
           <Button variant="ghost" onClick={onClose}>Fechar</Button>
         </div>
+        <div role="tablist" aria-label="Modos de visualização da peça" className="mt-5 flex flex-wrap gap-2">
+          {([ ["photo", "Foto: provar em mim"], ["mannequin", "Manequim 360°"], ["detail", "Detalhes e tecido"] ] as const).map(([value, label]) => (
+            <button key={value} role="tab" type="button" aria-selected={view === value} onClick={() => setView(value)} className={`rounded-full border px-4 py-2 text-xs font-medium transition ${view === value ? "border-primary bg-primary text-primary-foreground" : "border-line bg-background text-foreground hover:bg-secondary"}`}>{label}</button>
+          ))}
+        </div>
         <div className="mt-5 grid gap-5 lg:grid-cols-[minmax(0,1fr)_280px]">
           <div>
+            {view === "mannequin" ? (
+              <Suspense fallback={<div className="flex h-[520px] items-center justify-center rounded-xl border border-line text-sm text-muted-foreground">Carregando o manequim 3D…</div>}>
+                <Mannequin3D body={request.body} audience={request.audience} product={request.product} />
+              </Suspense>
+            ) : view === "detail" ? <div>
+              <ZoomableImage key={detailImage} src={detailImage} alt={`${detailImage === image ? "Prova visual gerada" : "Foto original da peça"} ${request.product.name} ampliada`} />
+              <div className="mt-3 flex flex-wrap gap-2">
+                {productPhotos.map((kind) => <button key={kind} type="button" aria-pressed={detailImage === request.product.images[kind]} onClick={() => setDetailImage(request.product.images[kind])} className={`rounded-lg border p-1 text-xs ${detailImage === request.product.images[kind] ? "border-primary" : "border-line"}`}>
+                  <img src={request.product.images[kind]} alt="" className="h-16 w-16 rounded object-cover" />
+                  <span className="block py-1">{{ front: "Frente", back: "Costas", detail: "Detalhe" }[kind]}</span>
+                </button>)}
+                {image ? <button type="button" aria-pressed={detailImage === image} onClick={() => setDetailImage(image)} className={`rounded-lg border p-1 text-xs ${detailImage === image ? "border-primary" : "border-line"}`}>
+                  <img src={image} alt="" className="h-16 w-16 rounded object-cover" />
+                  <span className="block py-1">Prova gerada</span>
+                </button> : null}
+              </div>
+              <p className="mt-3 text-xs leading-relaxed text-muted-foreground">As fotos da roupa são as imagens originais cadastradas pela loja; a prova é gerada por IA. A nitidez depende da resolução da imagem escolhida.</p>
+            </div> : <>
             <div className="relative aspect-[3/4] overflow-hidden rounded-lg border border-line bg-secondary">
               {image ? <>
                 <img src={image} alt="Depois da prova" className="absolute inset-0 size-full object-cover" />
@@ -144,10 +179,12 @@ export function TryOnOverlay({ request, onClose }: { request: TryOnRequest; onCl
               <label>Início da peça<input type="range" min="8" max="50" value={Math.round(region.y * 100)} onChange={(e) => setRegion((current) => ({ ...current, y: Number(e.target.value) / 100 }))} className="mt-2 w-full accent-primary" /></label>
               <label>Fim da peça<input type="range" min="40" max="99" value={Math.round((region.y + region.height) * 100)} onChange={(e) => setRegion((current) => ({ ...current, height: Math.max(0.05, Number(e.target.value) / 100 - current.y) }))} className="mt-2 w-full accent-primary" /></label>
             </div> : null}
+            </>}
           </div>
           <div className="space-y-4">
-            <div className="grid grid-cols-3 gap-2">{(["front","back","detail"] as const).map((kind) => <img key={kind} src={request.product.images[kind]} alt={`${request.product.name} — ${kind}`} className="aspect-square w-full rounded-lg border border-line object-cover" />)}</div>
+            <div className="grid grid-cols-3 gap-2">{productPhotos.map((kind) => <button type="button" key={kind} onClick={() => { setDetailImage(request.product.images[kind]); setView("detail"); }} aria-label={`Ampliar foto de ${ { front: "frente", back: "costas", detail: "detalhe" }[kind] } de ${request.product.name}`}><img src={request.product.images[kind]} alt="" className="aspect-square w-full rounded-lg border border-line object-cover hover:border-primary" /></button>)}</div>
             <p className="text-sm leading-relaxed text-secondary-foreground">{request.product.tagline}</p>
+            {view === "mannequin" ? <p className="text-xs leading-relaxed text-muted-foreground">Gire e aproxime o manequim para ver a forma por todos os lados. A foto da pessoa continua frontal; o 3D representa medidas e cor, sem reconstruir texturas ou costas que não foram fotografadas.</p> : null}
             {error ? <ErrorNote>{error}</ErrorNote> : null}
             {request.product.storeUrl ? <a href={request.product.storeUrl} target="_blank" rel="noreferrer" className="block"><Button className="w-full">Comprar agora</Button></a> : null}
             <Button variant="outline" onClick={() => void start(true)} disabled={running} className="w-full">{running ? "Gerando…" : "Gerar de novo"}</Button>

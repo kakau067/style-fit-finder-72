@@ -120,6 +120,8 @@ function Index() {
       size: fit.size,
       fitPref: profile.fitPref,
       photoDataUrl: photo.photoDataUrl,
+      body,
+      audience: profile.audience,
     });
   }
 

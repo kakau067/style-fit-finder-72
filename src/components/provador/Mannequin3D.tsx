@@ -3,11 +3,13 @@ import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 
 import { DEFAULT_MANNEQUIN_URL, getMannequinModelSource, loadMannequinModel, prepareMannequinModel } from "@/lib/mannequin-model";
+import { garmentTypeOf, type Product } from "@/data/catalog";
 
 import type { Body } from "@/lib/sizing";
 
-type Garment = "basico" | "camisa" | "blazer" | "vestido" | "calca";
+type Garment = "basico" | "camisa" | "blazer" | "vestido" | "calca" | "saia" | "camiseta";
 type Accessory = "nenhum" | "oculos" | "bolsa";
+type CameraAction = "front" | "back" | "left" | "right" | "zoomIn" | "zoomOut" | "reset";
 
 const GARMENTS: { value: Garment; label: string; color: string }[] = [
   { value: "basico", label: "Manequim", color: "#D2D3D6" },
@@ -15,7 +17,18 @@ const GARMENTS: { value: Garment; label: string; color: string }[] = [
   { value: "blazer", label: "Blazer", color: "#414246" },
   { value: "vestido", label: "Vestido", color: "#B4614A" },
   { value: "calca", label: "Calça", color: "#5B6572" },
+  { value: "saia", label: "Saia", color: "#B68588" },
+  { value: "camiseta", label: "Camiseta", color: "#E7DED0" },
 ];
+
+function productGarment(product: Product): Garment {
+  switch (garmentTypeOf(product)) {
+    case "top": return /blazer|jaqueta/i.test(product.name) ? "blazer" : /camisa/i.test(product.name) ? "camisa" : "camiseta";
+    case "pants": return "calca";
+    case "skirt": return "saia";
+    case "dress": return "vestido";
+  }
+}
 
 const ACCESSORIES: { value: Accessory; label: string }[] = [
   { value: "nenhum", label: "Sem acessório" },
@@ -28,15 +41,17 @@ function clamp(value: number, min: number, max: number) {
 }
 
 function disposeObject(object: THREE.Object3D) {
+  const materials = new Set<THREE.Material>();
   object.traverse((child) => {
     const mesh = child as THREE.Mesh;
     if (mesh.geometry) mesh.geometry.dispose();
     if (Array.isArray(mesh.material)) {
-      mesh.material.forEach((material) => material.dispose());
+      mesh.material.forEach((material) => materials.add(material));
     } else if (mesh.material) {
-      mesh.material.dispose();
+      materials.add(mesh.material);
     }
   });
+  materials.forEach((material) => material.dispose());
 }
 
 function createBodyGeometry(body: Body) {
@@ -107,27 +122,31 @@ function addJoint(
 
 // The fitted body remains a single continuous surface. The garment preview follows
 // its morph targets instead of intersecting the legs with procedural cylinders.
-function makeBodyPreviewMaterial(style: { value: number; color: THREE.Color }) {
+function makeBodyPreviewMaterial(style: { value: number; color: THREE.Color }, bounds: { minY: { value: number }; spanY: { value: number } }) {
   const material = new THREE.MeshPhysicalMaterial({
     color: 0xd2d3d6, roughness: 0.76, metalness: 0, clearcoat: 0.025,
   });
   material.onBeforeCompile = (shader) => {
     shader.uniforms.garmentMode = style;
     shader.uniforms.garmentColor = { value: style.color };
+    shader.uniforms.bodyMinY = bounds.minY;
+    shader.uniforms.bodySpanY = bounds.spanY;
     shader.vertexShader = shader.vertexShader
       .replace("#include <common>", "#include <common>\nvarying vec3 vBodyPosition;")
       .replace("#include <morphtarget_vertex>", "#include <morphtarget_vertex>\nvBodyPosition = transformed;");
     shader.fragmentShader = shader.fragmentShader
-      .replace("#include <common>", "#include <common>\nvarying vec3 vBodyPosition;\nuniform float garmentMode;\nuniform vec3 garmentColor;\nfloat garmentMask(vec3 p) {\n  float y = p.y / 1.667;\n  float x = abs(p.x);\n  float torso = smoothstep(.52, .53, y) * (1. - smoothstep(.865, .875, y));\n  float sleeves = smoothstep(.22, .26, x) * smoothstep(.54, .57, y) * (1. - smoothstep(.83, .87, y));\n  float top = max(torso * (1. - smoothstep(.35, .4, x)), sleeves);\n  float trousers = smoothstep(.075, .088, y) * (1. - smoothstep(.54, .56, y)) * (1. - smoothstep(.32, .37, x));\n  float dress = smoothstep(.29, .31, y) * (1. - smoothstep(.865, .875, y)) * (1. - smoothstep(.29, .35, x));\n  if (garmentMode < .5) return 0.;\n  if (garmentMode < 2.5) return top;\n  if (garmentMode < 3.5) return dress;\n  return trousers;\n}")
-      .replace("#include <color_fragment>", "#include <color_fragment>\nfloat garmentCoverage = garmentMask(vBodyPosition);\nfloat weave = sin(vBodyPosition.x * 880.) * sin(vBodyPosition.y * 910.);\ndiffuseColor.rgb = mix(diffuseColor.rgb, garmentColor * (0.96 + 0.035 * weave), garmentCoverage);")
+      .replace("#include <common>", "#include <common>\nvarying vec3 vBodyPosition;\nuniform float garmentMode;\nuniform vec3 garmentColor;\nuniform float bodyMinY;\nuniform float bodySpanY;\nfloat garmentMask(vec3 p) {\n  float y = (p.y - bodyMinY) / max(bodySpanY, .01);\n  float x = abs(p.x);\n  float torso = smoothstep(.52, .53, y) * (1. - smoothstep(.865, .875, y));\n  float sleeves = smoothstep(.22, .26, x) * smoothstep(.54, .57, y) * (1. - smoothstep(.83, .87, y));\n  float top = max(torso * (1. - smoothstep(.35, .4, x)), sleeves);\n  float trousers = smoothstep(.075, .088, y) * (1. - smoothstep(.54, .56, y)) * (1. - smoothstep(.32, .37, x));\n  float dress = smoothstep(.29, .31, y) * (1. - smoothstep(.865, .875, y)) * (1. - smoothstep(.29, .35, x));\n  float skirt = smoothstep(.29, .31, y) * (1. - smoothstep(.54, .56, y)) * (1. - smoothstep(.29, .35, x));\n  if (garmentMode < .5) return 0.;\n  if (garmentMode < 2.5 || garmentMode > 5.5) return top;\n  if (garmentMode < 3.5) return dress;\n  if (garmentMode < 4.5) return trousers;\n  return skirt;\n}")
+      .replace("#include <color_fragment>", "#include <color_fragment>\nfloat garmentCoverage = garmentMask(vBodyPosition);\ndiffuseColor.rgb = mix(diffuseColor.rgb, garmentColor, garmentCoverage);")
       .replace("#include <roughnessmap_fragment>", "#include <roughnessmap_fragment>\nroughnessFactor = mix(roughnessFactor, 0.86, garmentCoverage);");
   };
   material.customProgramCacheKey = () => "fitted-garment-preview-v1";
   return material;
 }
 
-export function Mannequin3D({ body, audience = "feminino" }: { body: Body; audience?: "feminino" | "masculino" }) {
+export function Mannequin3D({ body, audience = "feminino", product }: { body: Body; audience?: "feminino" | "masculino"; product?: Product }) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const cameraActionRef = useRef<((action: CameraAction) => void) | null>(null);
+  const productColorRef = useRef(product?.colorHex);
   const bodyRef = useRef(body);
   const audienceRef = useRef(audience);
   const rebuildRef = useRef<(() => void) | null>(null);
@@ -144,10 +163,13 @@ export function Mannequin3D({ body, audience = "feminino" }: { body: Body; audie
   });
   const [shared, setShared] = useState(false);
   const [externalModelLoaded, setExternalModelLoaded] = useState(false);
+  const [webglError, setWebglError] = useState(false);
+  const activeGarment = product ? productGarment(product) : garment;
 
   bodyRef.current = body;
   audienceRef.current = audience;
-  styleRef.current = { garment, accessory };
+  productColorRef.current = product?.colorHex;
+  styleRef.current = { garment: activeGarment, accessory: product ? "nenhum" : accessory };
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -159,12 +181,18 @@ export function Mannequin3D({ body, audience = "feminino" }: { body: Body; audie
     const camera = new THREE.PerspectiveCamera(28, 1, 0.1, 10);
     camera.position.set(0, 0.92, 4.35);
 
-    const renderer = new THREE.WebGLRenderer({
-      canvas,
-      antialias: true,
-      alpha: false,
-      powerPreference: "high-performance",
-    });
+    let renderer: THREE.WebGLRenderer;
+    try {
+      renderer = new THREE.WebGLRenderer({
+        canvas,
+        antialias: true,
+        alpha: false,
+        powerPreference: "high-performance",
+      });
+    } catch {
+      setWebglError(true);
+      return;
+    }
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     renderer.outputColorSpace = THREE.SRGBColorSpace;
     renderer.shadowMap.enabled = true;
@@ -187,6 +215,37 @@ export function Mannequin3D({ body, audience = "feminino" }: { body: Body; audie
     controls.target.set(0, 0.95, 0);
     controls.autoRotate = false;
     controls.update();
+    let frame = 0;
+    let stopped = false;
+    const requestRender = () => {
+      if (!frame && !stopped) frame = requestAnimationFrame(render);
+    };
+    const render = () => {
+      frame = 0;
+      if (stopped) return;
+      const moving = controls.update();
+      renderer.render(scene, camera);
+      if (moving) requestRender();
+    };
+    controls.addEventListener("change", requestRender);
+    cameraActionRef.current = (action) => {
+      const target = controls.target;
+      const offset = camera.position.clone().sub(target);
+      const distance = THREE.MathUtils.clamp(offset.length(), controls.minDistance, controls.maxDistance);
+      if (action === "zoomIn" || action === "zoomOut") {
+        offset.setLength(THREE.MathUtils.clamp(distance * (action === "zoomIn" ? 0.72 : 1.38), controls.minDistance, controls.maxDistance));
+        camera.position.copy(target).add(offset);
+      } else {
+        const nextDistance = action === "reset" ? 4.35 : distance;
+        const direction = action === "back" ? new THREE.Vector3(0, 0, -1)
+          : action === "left" ? new THREE.Vector3(-1, 0, 0)
+          : action === "right" ? new THREE.Vector3(1, 0, 0)
+          : new THREE.Vector3(0, 0, 1);
+        camera.position.copy(target).addScaledVector(direction, nextDistance);
+      }
+      controls.update();
+      requestRender();
+    };
 
     scene.add(new THREE.HemisphereLight(0xfff8ef, 0x51483f, 2.1));
 
@@ -220,7 +279,8 @@ export function Mannequin3D({ body, audience = "feminino" }: { body: Body; audie
     let externalModel: THREE.Object3D | null = null;
     let externalModelLoaded = false;
     const modelSource = getMannequinModelSource();
-    const fabricStyle = { value: 0, color: new THREE.Color(GARMENTS[0].color) };
+    const fabricStyle = { value: 0, color: new THREE.Color(GARMENTS[0]!.color) };
+    const shaderBounds = { minY: { value: -0.78 }, spanY: { value: 1.78 } };
 
     const skin = new THREE.MeshPhysicalMaterial({
       color: 0xd2d3d6,
@@ -296,7 +356,7 @@ export function Mannequin3D({ body, audience = "feminino" }: { body: Body; audie
         });
       });
       group.clear();
-      materials.forEach((material) => material.dispose());
+      materials.forEach((material) => { if (material !== skin && material !== hairMaterial) material.dispose(); });
     };
 
     const buildFittedAccessories = (height: number) => {
@@ -360,9 +420,9 @@ export function Mannequin3D({ body, audience = "feminino" }: { body: Body; audie
       clearGroup(clothing);
       clearGroup(accessories);
 
-      const garmentConfig = GARMENTS.find((item) => item.value === styleRef.current.garment) ?? GARMENTS[0];
+      const garmentConfig = GARMENTS.find((item) => item.value === styleRef.current.garment) ?? GARMENTS[0]!;
       const fabric = new THREE.MeshPhysicalMaterial({
-        color: new THREE.Color(garmentConfig.color),
+        color: new THREE.Color(productColorRef.current ?? garmentConfig.color),
         roughness: styleRef.current.garment === "blazer" ? 0.86 : 0.7,
         clearcoat: styleRef.current.garment === "blazer" ? 0.03 : 0.12,
       });
@@ -385,7 +445,7 @@ export function Mannequin3D({ body, audience = "feminino" }: { body: Body; audie
       if (styleRef.current.garment === "basico") {
         torso.geometry.dispose();
         fabric.dispose();
-      } else if (styleRef.current.garment === "calca") {
+      } else if (styleRef.current.garment === "calca" || styleRef.current.garment === "saia") {
         torso.geometry.dispose();
       } else {
         clothing.add(torso);
@@ -397,6 +457,17 @@ export function Mannequin3D({ body, audience = "feminino" }: { body: Body; audie
           fabric,
         );
         skirt.position.y = model.legHeight + model.torsoHeight * 0.08;
+        skirt.castShadow = true;
+        skirt.receiveShadow = true;
+        clothing.add(skirt);
+      }
+
+      if (styleRef.current.garment === "saia") {
+        const skirt = new THREE.Mesh(
+          new THREE.CylinderGeometry(model.hips * 0.26, model.hips * 0.38, model.legHeight * 0.42, 64, 6),
+          fabric,
+        );
+        skirt.position.y = model.legHeight * 0.79;
         skirt.castShadow = true;
         skirt.receiveShadow = true;
         clothing.add(skirt);
@@ -416,21 +487,25 @@ export function Mannequin3D({ body, audience = "feminino" }: { body: Body; audie
         }
       }
 
-      if (styleRef.current.garment === "camisa" || styleRef.current.garment === "blazer") {
-        const lapelMaterial = new THREE.MeshPhysicalMaterial({
-          color: styleRef.current.garment === "blazer" ? 0x2e3033 : 0xd8d5c8,
-          roughness: 0.78,
-        });
+      if (styleRef.current.garment === "camisa" || styleRef.current.garment === "blazer" || styleRef.current.garment === "camiseta") {
+        if (styleRef.current.garment !== "camiseta") {
+          const lapelMaterial = new THREE.MeshPhysicalMaterial({
+            color: styleRef.current.garment === "blazer" ? 0x2e3033 : 0xd8d5c8,
+            roughness: 0.78,
+          });
+          for (const side of [-1, 1]) {
+            const lapel = new THREE.Mesh(
+              new THREE.BoxGeometry(model.chest * 0.075, model.torsoHeight * 0.36, 0.018),
+              lapelMaterial,
+            );
+            lapel.position.set(side * model.chest * 0.07, model.shoulderY - model.torsoHeight * 0.18, model.chest * 0.2);
+            lapel.rotation.z = side * -0.2;
+            lapel.rotation.y = side * 0.08;
+            lapel.castShadow = true;
+            clothing.add(lapel);
+          }
+        }
         for (const side of [-1, 1]) {
-          const lapel = new THREE.Mesh(
-            new THREE.BoxGeometry(model.chest * 0.075, model.torsoHeight * 0.36, 0.018),
-            lapelMaterial,
-          );
-          lapel.position.set(side * model.chest * 0.07, model.shoulderY - model.torsoHeight * 0.18, model.chest * 0.2);
-          lapel.rotation.z = side * -0.2;
-          lapel.rotation.y = side * 0.08;
-          lapel.castShadow = true;
-          clothing.add(lapel);
           const sleeve = addCapsule(
             clothing, fabric, Math.max(model.chest * 0.085, 0.07),
             model.height * 0.2,
@@ -490,9 +565,18 @@ export function Mannequin3D({ body, audience = "feminino" }: { body: Body; audie
 
       if (externalModel && externalModelLoaded) {
         prepareMannequinModel(externalModel, current, audienceRef.current);
+        const fittedBody = externalModel.getObjectByName("Body") as THREE.Mesh | undefined;
+        if (fittedBody?.isMesh) {
+          fittedBody.geometry.computeBoundingBox();
+          const bounds = fittedBody.geometry.boundingBox;
+          if (bounds) {
+            shaderBounds.minY.value = bounds.min.y;
+            shaderBounds.spanY.value = Math.max(bounds.max.y - bounds.min.y, 0.01);
+          }
+        }
         const choice = GARMENTS.findIndex((item) => item.value === styleRef.current.garment);
         fabricStyle.value = Math.max(choice, 0);
-        fabricStyle.color.copy(new THREE.Color(GARMENTS[Math.max(choice, 0)].color));
+        fabricStyle.color.set(productColorRef.current ?? GARMENTS[Math.max(choice, 0)]!.color);
         clothing.visible = false;
         buildFittedAccessories(current.heightCm / 100);
         accessories.visible = true;
@@ -591,7 +675,7 @@ export function Mannequin3D({ body, audience = "feminino" }: { body: Body; audie
           externalModel = loadedModel;
           if (modelSource === DEFAULT_MANNEQUIN_URL) {
             const fittedBody = loadedModel.getObjectByName("Body") as THREE.Mesh | undefined;
-            if (fittedBody?.isMesh) fittedBody.material = makeBodyPreviewMaterial(fabricStyle);
+            if (fittedBody?.isMesh) fittedBody.material = makeBodyPreviewMaterial(fabricStyle, shaderBounds);
           }
           externalModelGroup.add(loadedModel);
           externalModelLoaded = true;
@@ -624,27 +708,19 @@ export function Mannequin3D({ body, audience = "feminino" }: { body: Body; audie
       renderer.setSize(width, height, false);
       camera.aspect = width / height;
       camera.updateProjectionMatrix();
+      requestRender();
     };
 
     resize();
     const observer = new ResizeObserver(resize);
     observer.observe(canvas);
 
-    let frame = 0;
-    let stopped = false;
-    const animate = () => {
-      if (stopped) return;
-      frame = requestAnimationFrame(animate);
-      controls.update();
-      renderer.render(scene, camera);
-    };
-    animate();
-
     return () => {
       stopped = true;
       cancelAnimationFrame(frame);
       observer.disconnect();
       rebuildRef.current = null;
+      cameraActionRef.current = null;
       clearGroup(clothing);
       clearGroup(accessories);
       disposeObject(mannequin);
@@ -652,6 +728,7 @@ export function Mannequin3D({ body, audience = "feminino" }: { body: Body; audie
       ground.material.dispose();
       shadowDisc.geometry.dispose();
       shadowDisc.material.dispose();
+      controls.removeEventListener("change", requestRender);
       controls.dispose();
       renderer.dispose();
     };
@@ -664,7 +741,7 @@ export function Mannequin3D({ body, audience = "feminino" }: { body: Body; audie
 
   useEffect(() => {
     rebuildRef.current?.();
-  }, [garment, accessory]);
+  }, [activeGarment, accessory, product?.colorHex]);
 
   useEffect(() => {
     audienceRef.current = audience;
@@ -704,26 +781,32 @@ export function Mannequin3D({ body, audience = "feminino" }: { body: Body; audie
             Visualização 3D
           </p>
           <p className="mt-0.5 text-sm text-secondary-foreground">
-            {externalModelLoaded ? "Corpo anatômico 3D ajustado às suas medidas" : "Visual 3D proporcional às suas medidas"}
+            {product ? `Visualização ilustrativa · ${product.name}` : externalModelLoaded ? "Corpo anatômico 3D ajustado às suas medidas" : "Visual 3D proporcional às suas medidas"}
           </p>
         </div>
         <span className="rounded-full border border-line bg-background/70 px-2.5 py-1 font-mono text-[10px] text-muted-foreground">
-          {externalModelLoaded ? "modelo 3D" : "fallback"}
+          {product ? "giro 360°" : externalModelLoaded ? "modelo 3D" : "fallback"}
         </span>
       </div>
 
       <div className="relative">
-        <canvas
+        {webglError ? <div className="flex h-[430px] items-center justify-center p-6 text-center text-sm text-muted-foreground sm:h-[520px]">O 3D não está disponível neste navegador. Use a prova na foto e as imagens da peça.</div> : <canvas
           ref={canvasRef}
           className="block h-[430px] w-full touch-none sm:h-[520px]"
-          aria-label="Manequim 3D baseado nas medidas informadas"
-        />
+          aria-label="Manequim 3D rotativo baseado nas medidas informadas"
+        />}
         <div className="pointer-events-none absolute left-3 top-3 rounded-lg bg-background/75 px-3 py-2 text-[10px] leading-relaxed text-muted-foreground shadow-sm backdrop-blur-sm">
           Arraste para girar · pinça/roda para zoom · dois dedos para mover
         </div>
       </div>
 
-      <div className="grid gap-3 border-t border-line bg-background/80 p-3 sm:grid-cols-2">
+      {!webglError ? <div className="flex flex-wrap items-center gap-1.5 border-t border-line bg-background/80 p-3" role="group" aria-label="Controles do manequim 3D">
+        {([ ["front", "Frente"], ["back", "Costas"], ["left", "Lado esquerdo"], ["right", "Lado direito"], ["zoomIn", "Aproximar +"], ["zoomOut", "Afastar −"], ["reset", "Recentrar"] ] as const).map(([action, label]) => (
+          <button key={action} type="button" onClick={() => cameraActionRef.current?.(action)} className="rounded-full border border-line bg-background px-2.5 py-1.5 text-xs text-foreground hover:bg-secondary">{label}</button>
+        ))}
+      </div> : null}
+
+      {!product ? <div className="grid gap-3 border-t border-line bg-background/80 p-3 sm:grid-cols-2">
         <div>
           <p className="mb-1.5 font-mono text-[10px] uppercase tracking-[0.16em] text-muted-foreground">Roupa</p>
           <div className="flex flex-wrap gap-1.5">
@@ -766,7 +849,7 @@ export function Mannequin3D({ body, audience = "feminino" }: { body: Body; audie
         <p className="sm:col-span-2 text-[11px] leading-relaxed text-muted-foreground">
           Prévia de cor sobre o corpo. O tecido, o caimento e o tamanho da peça real dependem do modelo 3D do produto.
         </p>
-      </div>
+      </div> : <p className="border-t border-line bg-background px-4 py-3 text-xs leading-relaxed text-muted-foreground">Manequim proporcional às medidas, com a cor aproximada da peça. O tecido e a modelagem reais aparecem nas fotos do produto; esta representação 3D não é uma digitalização da roupa.</p>}
 
       <div className="grid grid-cols-3 border-t border-line bg-background/60 text-center text-[11px] text-muted-foreground">
         <span className="border-r border-line px-2 py-2">altura {body.heightCm} cm</span>

@@ -8,7 +8,7 @@ import { compositeTryOn, garmentRegion } from "@/lib/tryon-composite";
 import type { FitPref, Size } from "@/lib/sizing";
 
 export type TryOnRequest = { product: Product; size: Size; fitPref: FitPref; photoDataUrl: string };
-type QueueJob = { requestId: string; ticket: string };
+type QueueJob = { requestId: string; ticket: string; model?: "idm" | "fashn" };
 const pendingJobs = new Map<string, QueueJob>();
 const completedResults = new Map<string, string>();
 
@@ -59,8 +59,8 @@ export function TryOnOverlay({ request, onClose }: { request: TryOnRequest; onCl
         const response = await fetch("/api/public/tryon", { method: "POST", body: form, signal: controller.signal });
         if (!response.ok) throw new Error(`Falha na prova visual: ${response.status} ${await response.text()}`);
         if (response.status === 202) {
-          const submitted = (await response.json()) as { requestId: string; ticket: string };
-          job = { requestId: submitted.requestId, ticket: submitted.ticket };
+          const submitted = (await response.json()) as QueueJob;
+          job = submitted;
           pendingJobs.set(jobKey, job);
         } else {
           // The gateway streams previews directly. Never submit the same costly
@@ -76,7 +76,7 @@ export function TryOnOverlay({ request, onClose }: { request: TryOnRequest; onCl
       let failures = 0;
       while (job) {
         controller.signal.throwIfAborted();
-        const statusUrl = `/api/public/tryon?requestId=${encodeURIComponent(job.requestId)}&ticket=${encodeURIComponent(job.ticket)}`;
+        const statusUrl = `/api/public/tryon?requestId=${encodeURIComponent(job.requestId)}&ticket=${encodeURIComponent(job.ticket)}&model=${job.model ?? "idm"}`;
         try {
           const response = await fetch(statusUrl, { signal: controller.signal, cache: "no-store" });
           if (!response.ok) throw new Error(`Falha ao acompanhar a prova: ${response.status} ${await response.text()}`);
@@ -152,7 +152,7 @@ export function TryOnOverlay({ request, onClose }: { request: TryOnRequest; onCl
             {request.product.storeUrl ? <a href={request.product.storeUrl} target="_blank" rel="noreferrer" className="block"><Button className="w-full">Comprar agora</Button></a> : null}
             <Button variant="outline" onClick={() => void start(true)} disabled={running} className="w-full">{running ? "Gerando…" : "Gerar de novo"}</Button>
             {running ? <p className="text-xs text-muted-foreground">Você pode fechar e voltar a esta peça; a geração em andamento será retomada.</p> : null}
-            <p className="text-xs leading-relaxed text-muted-foreground">A foto original é preservada fora da área da peça. Ajuste os limites se a troca atingir o rosto ou a calça; dentro da área, a IA pode alterar detalhes.</p>
+            <p className="text-xs leading-relaxed text-muted-foreground">A foto original é preservada fora da área da peça escolhida. Ajuste os limites se necessário; dentro dessa área, a IA pode alterar detalhes.</p>
           </div>
         </div>
       </div>

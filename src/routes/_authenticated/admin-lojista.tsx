@@ -3,7 +3,7 @@ import { useServerFn } from "@tanstack/react-start";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { Button, ErrorNote, Eyebrow, Panel, ToggleChip } from "@/components/provador/primitives";
-import { OCCASION_LABEL, OCCASIONS, STYLE_LABEL, STYLE_TAGS, type Product } from "@/data/catalog";
+import { OCCASION_LABEL, OCCASIONS, STYLE_LABEL, STYLE_TAGS, garmentTypeOf, type GarmentType, type Product } from "@/data/catalog";
 import { supabase } from "@/integrations/supabase/client";
 import { fileToSizedDataURL } from "@/lib/image-utils";
 import { productImageUrl } from "@/lib/products.shared";
@@ -27,11 +27,12 @@ export const Route = createFileRoute("/_authenticated/admin-lojista")({
   component: AdminPage,
 });
 
-type Category = "top" | "bottom" | "dress";
+type Category = GarmentType;
 
 const CATEGORY_LABEL: Record<Category, string> = {
   top: "Parte de cima",
-  bottom: "Parte de baixo",
+  pants: "Calça",
+  skirt: "Saia",
   dress: "Vestido / peça única",
 };
 
@@ -41,10 +42,14 @@ const CATEGORY_MEASURES: Record<Category, { key: string; label: string }[]> = {
     { key: "waist", label: "Cintura" },
     { key: "shoulder", label: "Ombros" },
   ],
-  bottom: [
+  pants: [
     { key: "waist", label: "Cintura" },
     { key: "hips", label: "Quadril" },
     { key: "inseam", label: "Gancho / cavalo" },
+  ],
+  skirt: [
+    { key: "waist", label: "Cintura" },
+    { key: "hips", label: "Quadril" },
   ],
   dress: [
     { key: "chest", label: "Busto / tórax" },
@@ -60,11 +65,17 @@ const FIT_TEMPLATES: Record<Category, Product["fit"]> = {
     weight: { chest: 0.55, waist: 0.2, shoulder: 0.25 },
     tolerance: { chest: 5, waist: 5, shoulder: 1.6 },
   },
-  bottom: {
+  pants: {
     stretch: 0.08,
     ease: { waist: 2, hips: 6, inseam: 0 },
     weight: { waist: 0.45, hips: 0.4, inseam: 0.15 },
     tolerance: { waist: 2.5, hips: 4, inseam: 3 },
+  },
+  skirt: {
+    stretch: 0.08,
+    ease: { waist: 2, hips: 6 },
+    weight: { waist: 0.55, hips: 0.45 },
+    tolerance: { waist: 2.5, hips: 4 },
   },
   dress: {
     stretch: 0.05,
@@ -83,16 +94,14 @@ const SHAPES: { key: BodyShape; label: string }[] = [
 ];
 
 function categoryOf(product: Product): Category {
-  const keys = Object.keys(product.fit.ease);
-  if (keys.includes("inseam")) return "bottom";
-  if (keys.includes("hips")) return "dress";
-  return "top";
+  return garmentTypeOf(product);
 }
 
 function emptySizes(category: Category): SizeSpec[] {
   const base: Record<string, Record<string, number>> = {
     top: { chest: 96, waist: 90, shoulder: 42 },
-    bottom: { waist: 70, hips: 98, inseam: 72 },
+    pants: { waist: 70, hips: 98, inseam: 72 },
+    skirt: { waist: 70, hips: 98 },
     dress: { chest: 94, waist: 78, hips: 102 },
   };
   return SIZES.map((size, index) => ({
@@ -288,7 +297,7 @@ function AdminPage() {
           styles: draft.styles,
           occasions: draft.occasions,
           flatters: draft.flatters,
-          fit: { ...template, stretch: draft.stretch },
+          fit: { ...template, garmentType: draft.category, stretch: draft.stretch },
           sizes: draft.sizes,
         },
       });

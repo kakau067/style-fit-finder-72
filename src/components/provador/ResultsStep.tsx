@@ -1,5 +1,5 @@
 import { Button, Eyebrow, Meter, Panel } from "@/components/provador/primitives";
-import { OCCASION_LABEL, STYLE_LABEL, type Product } from "@/data/catalog";
+import { OCCASION_LABEL, STYLE_LABEL, garmentTypeOf, type Product } from "@/data/catalog";
 import { cn } from "@/lib/utils";
 import type { RankResult, SizeFitResult } from "@/lib/sizing";
 
@@ -12,15 +12,15 @@ const VERDICT_CLASS: Record<SizeFitResult["verdict"], string> = {
 const GROUPS: { label: string; test: (product: Product) => boolean }[] = [
   {
     label: "Partes de cima",
-    test: (p) => p.fit.weight.chest !== undefined && p.fit.weight.hips === undefined,
+    test: (p) => garmentTypeOf(p) === "top",
   },
   {
     label: "Partes de baixo",
-    test: (p) => p.fit.weight.chest === undefined,
+    test: (p) => garmentTypeOf(p) === "pants" || garmentTypeOf(p) === "skirt",
   },
   {
     label: "Vestidos",
-    test: (p) => p.fit.weight.chest !== undefined && p.fit.weight.hips !== undefined,
+    test: (p) => garmentTypeOf(p) === "dress",
   },
 ];
 

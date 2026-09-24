@@ -22,8 +22,11 @@ export function productImageUrl(imagePath: string): string {
 }
 
 export function rowToProduct(row: ProductRow): Product {
+  const fit = row.fit as unknown as ProductFit;
+  const garmentType = fit.garmentType && (["top", "pants", "skirt", "dress"] as const).includes(fit.garmentType) ? fit.garmentType : undefined;
   return {
     id: row.slug,
+    ...(garmentType ? { garmentType } : {}),
     name: row.name,
     tagline: row.tagline,
     price: Number(row.price),
@@ -42,7 +45,7 @@ export function rowToProduct(row: ProductRow): Product {
     styles: row.styles,
     occasions: row.occasions,
     flatters: row.flatters as BodyShape[],
-    fit: row.fit as unknown as ProductFit,
+    fit,
     sizes: row.sizes as unknown as SizeSpec[],
   };
 }

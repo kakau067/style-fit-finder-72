@@ -30,6 +30,7 @@ export type SizeSpec = {
 };
 
 export type ProductFit = {
+  garmentType?: "top" | "pants" | "skirt" | "dress";
   /** Extra cm of fabric left over the body when the cut is "acertado". */
   ease: Partial<Record<GarmentKey, number>>;
   /** How much each measurement decides the fit. Should sum to ~1. */

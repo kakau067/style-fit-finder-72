@@ -1,12 +1,14 @@
-import type { Product } from "@/data/catalog";
+import { garmentTypeOf, type Product } from "@/data/catalog";
 
 export type TryOnRegion = { x: number; y: number; width: number; height: number };
 
 export function garmentRegion(product: Product): TryOnRegion {
-  const { chest, hips } = product.fit.weight;
-  if (chest === undefined) return { x: 0.12, y: 0.42, width: 0.76, height: 0.55 };
-  if (hips !== undefined) return { x: 0.12, y: 0.18, width: 0.76, height: 0.72 };
-  return { x: 0.12, y: 0.2, width: 0.76, height: 0.39 };
+  switch (garmentTypeOf(product)) {
+    case "top": return { x: 0.1, y: 0.18, width: 0.8, height: 0.42 };
+    case "pants": return { x: 0.1, y: 0.42, width: 0.8, height: 0.57 };
+    case "skirt": return { x: 0.1, y: 0.42, width: 0.8, height: 0.43 };
+    case "dress": return { x: 0.08, y: 0.17, width: 0.84, height: 0.73 };
+  }
 }
 
 function loadImage(src: string): Promise<HTMLImageElement> {

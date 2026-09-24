@@ -116,6 +116,7 @@ const sizeSpecSchema = z.object({
 });
 
 const fitSchema = z.object({
+  garmentType: z.enum(["top", "pants", "skirt", "dress"]).optional(),
   stretch: z.number().min(0).max(0.6),
   // A garment may have zero ease (e.g. trouser inseam); body measurements remain positive.
   ease: allowanceSchema,

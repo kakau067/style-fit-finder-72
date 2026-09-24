@@ -19,9 +19,11 @@ import tricotImage from "@/assets/products/tricot.jpg";
 import vestidoImage from "@/assets/products/vestido-linho.jpg";
 
 export type Audience = "feminino" | "masculino" | "unissex";
+export type GarmentType = "top" | "pants" | "skirt" | "dress";
 
 export type Product = {
   id: string;
+  garmentType?: GarmentType;
   name: string;
   tagline: string;
   price: number;
@@ -87,6 +89,7 @@ export const OCCASION_LABEL: Record<string, string> = {
 export const PRODUCTS: Product[] = [
   {
     id: "camiseta-pima",
+    garmentType: "top",
     name: "Camiseta Pima Essencial",
     tagline: "Algodão pima peruano, costura reforçada, cai reto no corpo.",
     price: 129,
@@ -117,6 +120,7 @@ export const PRODUCTS: Product[] = [
   },
   {
     id: "camisa-viscose",
+    garmentType: "top",
     name: "Camisa Fluida Oversized",
     tagline: "Viscose certified com caimento leve e ombro deslocado.",
     price: 249,
@@ -147,6 +151,7 @@ export const PRODUCTS: Product[] = [
   },
   {
     id: "calca-alfaiataria",
+    garmentType: "pants",
     name: "Calça Alfaiataria Cintura Alta",
     tagline: "Pregas fundas, cintura que não abre e perna wide leg.",
     price: 389,
@@ -177,6 +182,7 @@ export const PRODUCTS: Product[] = [
   },
   {
     id: "vestido-linho",
+    garmentType: "dress",
     name: "Vestido Midi de Linho",
     tagline: "Linho lavado com cinto para amarrar e saia evasê.",
     price: 459,
@@ -207,6 +213,7 @@ export const PRODUCTS: Product[] = [
   },
   {
     id: "blazer",
+    garmentType: "top",
     name: "Blazer Desestruturado",
     tagline: "Sem ombreiras, forro parcial, veste como um casaco leve.",
     price: 649,
@@ -237,6 +244,7 @@ export const PRODUCTS: Product[] = [
   },
   {
     id: "saia-plissada",
+    garmentType: "skirt",
     name: "Saia Midi Plissada",
     tagline: "Pala de elástico embutido e plissado que não abre.",
     price: 329,
@@ -267,6 +275,7 @@ export const PRODUCTS: Product[] = [
   },
   {
     id: "tricot",
+    garmentType: "top",
     name: "Tricot Canelado Gola Alta",
     tagline: "Canelado de toque macio com elasticidade real.",
     price: 379,
@@ -297,6 +306,7 @@ export const PRODUCTS: Product[] = [
   },
   {
     id: "jaqueta-jeans",
+    garmentType: "top",
     name: "Jaqueta Jeans Cropped",
     tagline: "Barra curta, lavagem média e estrutura que segura a forma.",
     price: 429,
@@ -328,6 +338,16 @@ export const PRODUCTS: Product[] = [
 ];
 
 export const PRODUCT_BY_ID = new Map(PRODUCTS.map((product) => [product.id, product]));
+
+export function garmentTypeOf(product: Product): GarmentType {
+  if (product.garmentType) return product.garmentType;
+  // Legacy catalogue entries did not persist a type. Infer from their sizing
+  // measurements; new merchant entries persist the explicit selection.
+  if (product.fit.ease.inseam !== undefined) return "pants";
+  if (product.fit.ease.chest !== undefined && product.fit.ease.hips !== undefined) return "dress";
+  if (product.fit.ease.chest !== undefined) return "top";
+  return "skirt";
+}
 
 export function audienceMatches(product: Product, audience: "feminino" | "masculino") {
   return product.audience === "unissex" || product.audience === audience;

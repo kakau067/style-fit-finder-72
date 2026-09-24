@@ -1,7 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { createClient } from "@supabase/supabase-js";
 
-import { PRODUCT_BY_ID, type Product } from "@/data/catalog";
+import { PRODUCT_BY_ID, garmentTypeOf, type Product } from "@/data/catalog";
 import type { Database } from "@/integrations/supabase/types";
 import { editImage, garmentFileFromReference, imageSettings } from "@/lib/image-gateway.server";
 import { pollFalTryOn, submitFalTryOn, validTryOnRequest } from "@/lib/fal-tryon.server";
@@ -97,9 +97,10 @@ export const Route = createFileRoute("/api/public/tryon")({
         if (params.has("health")) return Response.json({ provider: key ? "fal_queue" : process.env["LOVABLE_API_KEY"] ? "lovable_stream" : "none" });
         const id = params.get("requestId") ?? "";
         const ticket = params.get("ticket") ?? "";
-        if (!key || !validTryOnRequest(id, ticket, key)) return new Response("Prova não encontrada", { status: 404 });
+        const model = params.get("model") === "fashn" ? "fashn" : "idm";
+        if (!key || !validTryOnRequest(id, ticket, key, model)) return new Response("Prova não encontrada", { status: 404 });
         try {
-          return Response.json(await pollFalTryOn(key, id), { headers: { "Cache-Control": "no-store" } });
+          return Response.json(await pollFalTryOn(key, id, model), { headers: { "Cache-Control": "no-store" } });
         } catch (cause) {
           return new Response(cause instanceof Error ? cause.message : "Falha ao acompanhar a prova.", { status: 502 });
         }
@@ -132,11 +133,14 @@ export const Route = createFileRoute("/api/public/tryon")({
             const [humanImageUrl, garmentImageUrl] = await Promise.all([
               dataUrlFromFile(photo), dataUrlFromFile(garment),
             ]);
+            const type = garmentTypeOf(product);
             const queued = await submitFalTryOn(apiKey, {
-              human_image_url: humanImageUrl,
-              garment_image_url: garmentImageUrl,
-              description: `${product.name}, ${product.colorName}, ${product.fabric}. ${product.silhouette}. Tamanho ${size}, caimento ${FIT_WORDING[fitPref]}.`,
-              num_inference_steps: 30,
+              model_image: humanImageUrl,
+              garment_image: garmentImageUrl,
+              category: type === "dress" ? "one-pieces" : type === "top" ? "tops" : "bottoms",
+              mode: "balanced",
+              garment_photo_type: "auto",
+              output_format: "png",
             });
             return Response.json({ provider: "fal_queue", ...queued }, { status: 202, headers: { "Cache-Control": "no-store" } });
           } else {
@@ -144,7 +148,13 @@ export const Route = createFileRoute("/api/public/tryon")({
             edit.set("image[]", photo);
             edit.append("image[]", garment);
             edit.set("stream", "true");
-            edit.set("prompt", `Edite somente a peça de roupa na foto da pessoa usando a segunda imagem como referência: ${product.name}, ${product.colorName}, ${product.fabric}. Preserve exatamente rosto, cabelo, pose, corpo, fundo e todas as outras roupas. Caimento ${FIT_WORDING[fitPref]}.`);
+            const scope = {
+              top: "Substitua apenas a roupa da parte de cima; preserve a calça ou saia e os sapatos.",
+              pants: "Substitua apenas a calça, da cintura à barra; preserve a blusa, rosto e sapatos.",
+              skirt: "Substitua apenas a peça da cintura até a barra por uma saia; preserve a blusa, pernas e sapatos.",
+              dress: "Vista um vestido inteiro, do ombro à barra, cobrindo a blusa e a calça originais; preserve rosto e sapatos.",
+            }[garmentTypeOf(product)];
+            edit.set("prompt", `${scope} Use a segunda imagem como referência fiel da peça: ${product.name}, ${product.colorName}, ${product.fabric}. Preserve exatamente rosto, cabelo, pose, corpo e fundo fora da peça. Caimento ${FIT_WORDING[fitPref]}.`);
             return streamGatewayTryOn(gatewayKey!, edit);
           }
         } catch (error) {

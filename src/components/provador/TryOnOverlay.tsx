@@ -13,7 +13,7 @@ const Mannequin3D = lazy(() => import("@/components/provador/Mannequin3D").then(
 export type TryOnRequest = { product: Product; size: Size; fitPref: FitPref; photoDataUrl: string; body: Body; audience: "feminino" | "masculino" };
 type View = "photo" | "mannequin" | "detail";
 type QueueJob = { requestId: string; ticket: string; model?: "idm" | "fashn"; responseUrl?: string };
-type TryOnProvider = "auto" | "gemini";
+type TryOnProvider = "auto" | "gemini" | "fal";
 const pendingJobs = new Map<string, QueueJob>();
 const pendingSubmissions = new Map<string, Promise<{ job?: QueueJob; response?: Response }>>();
 const completedResults = new Map<string, string>();
@@ -218,6 +218,7 @@ export function TryOnOverlay({ request, onClose }: { request: TryOnRequest; onCl
             <Button variant="outline" onClick={() => void start(true)} disabled={running} className="w-full">{running ? "Gerando…" : "Gerar de novo"}</Button>
             {!running && done ? <Button variant="outline" onClick={() => void start(false, "quality")} className="w-full">Gerar foto em alta qualidade</Button> : null}
             {!running ? <Button variant="outline" onClick={() => void start(true, "quality", "gemini")} className="w-full">Provar com Fit Check (Gemini)</Button> : null}
+            {!running ? <Button variant="outline" onClick={() => void start(true, "quality", "fal")} className="w-full">Provar com Fal.ai</Button> : null}
             {running ? <p className="text-xs text-muted-foreground">Você pode fechar e voltar a esta peça; a geração em andamento será retomada.</p> : null}
             <p className="text-xs leading-relaxed text-muted-foreground">A foto original é preservada fora da área da peça escolhida. Ajuste os limites se necessário; dentro dessa área, a IA pode alterar detalhes.</p>
           </div>

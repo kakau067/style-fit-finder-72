@@ -16,7 +16,25 @@ export function validTryOnRequest(id: string, signature: string, key: string, mo
   if (responseUrl) {
     try {
       const url = new URL(responseUrl);
-      if (url.protocol !== "https:" || url.hostname !== "queue.fal.run" || url.username || url.password || url.search || url.hash || !url.pathname.endsWith(`/requests/${id}/response`)) return false;
+      if (url.protocol !== "https:" || !(url.hostname === "queue.fal.run" || url.hostname.endsWith(".fal.run")) || url.username || url.password || url.search || url.hash || !new RegExp(`/requests/${id}/responseimport { createHmac, timingSafeEqual } from "node:crypto";
+
+export type FalTryOnModel = "idm" | "fashn";
+const QUEUES: Record<FalTryOnModel, string> = {
+  idm: "https://queue.fal.run/fal-ai/idm-vton",
+  fashn: "https://queue.fal.run/fal-ai/fashn/tryon/v1.6",
+};
+
+export function signTryOnRequest(id: string, key: string, model: FalTryOnModel = "idm", responseUrl = ""): string {
+  // Keep accepting tickets issued to in-flight IDM jobs before the migration.
+  return createHmac("sha256", key).update(responseUrl ? `tryon:${model}:${id}:${responseUrl}` : model === "idm" ? `tryon:${id}` : `tryon:${model}:${id}`).digest("hex");
+}
+
+export function validTryOnRequest(id: string, signature: string, key: string, model: FalTryOnModel = "idm", responseUrl = ""): boolean {
+  if (!/^[\w-]{8,100}$/.test(id) || !/^[a-f0-9]{64}$/.test(signature)) return false;
+  if (responseUrl) {
+    try {
+      const url = new URL(responseUrl);
+      ).test(url.pathname)) return false;
     } catch { return false; }
   }
   return timingSafeEqual(Buffer.from(signature, "hex"), Buffer.from(signTryOnRequest(id, key, model, responseUrl), "hex"));
@@ -43,8 +61,9 @@ export async function submitFalTryOn(key: string, input: Record<string, unknown>
   });
   const id = result["request_id"];
   if (typeof id !== "string" || !/^[\w-]{8,100}$/.test(id)) throw new Error("O serviço não retornou uma identificação da prova.");
-  const responseUrl = result["response_url"];
-  if (typeof responseUrl !== "string") throw new Error("O serviço não retornou o endereço do resultado da prova.");
+  const responseUrl = typeof result["response_url"] === "string"
+    ? result["response_url"]
+    : `${QUEUES[model]}/requests/${encodeURIComponent(id)}/response`;
   const ticket = signTryOnRequest(id, key, model, responseUrl);
   if (!validTryOnRequest(id, ticket, key, model, responseUrl)) throw new Error("O serviço retornou um endereço de resultado inválido.");
   return { requestId: id, responseUrl, ticket, model };
@@ -53,7 +72,9 @@ export async function submitFalTryOn(key: string, input: Record<string, unknown>
 export async function pollFalTryOn(key: string, id: string, model: FalTryOnModel = "idm", responseUrl = "") {
   // fal returns a canonical response URL. For nested model routes it may differ
   // from a URL constructed by appending /requests to the submission route.
-  const root = responseUrl ? responseUrl.slice(0, -"/response".length) : `${QUEUES[model]}/requests/${encodeURIComponent(id)}`;
+  const root = responseUrl
+    ? (() => { const url = new URL(responseUrl); url.pathname = url.pathname.replace(/\\/response$/, ""); url.search = ""; url.hash = ""; return url.toString().replace(/\\/$/, ""); })()
+    : `${QUEUES[model]}/requests/${encodeURIComponent(id)}`;
   const status = await falJson(`${root}/status`, key);
   if (status["status"] !== "COMPLETED") {
     if (status["status"] !== "IN_QUEUE" && status["status"] !== "IN_PROGRESS") throw new Error("A geração da prova foi interrompida.");

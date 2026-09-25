@@ -47,7 +47,7 @@ function fitStaticMesh(
 ) {
   // Edit a private copy of the base surface. Artist morph targets remain intact
   // and still control bust, waist, hips and shoulders independently.
-  if (mesh.isSkinnedMesh || !mesh.geometry.getAttribute("position")) return;
+  if ((mesh as unknown as THREE.SkinnedMesh).isSkinnedMesh || !mesh.geometry.getAttribute("position")) return;
   if (!mesh.userData.mannequinOriginalPositions) {
     const source = mesh.geometry.getAttribute("position") as THREE.BufferAttribute;
     const vertices = new Float32Array(source.count * 3);
@@ -124,10 +124,10 @@ export function prepareMannequinModel(model: THREE.Object3D, body: Body, audienc
   model.scale.setScalar(1);
   model.position.set(0, 0, 0);
   model.updateMatrixWorld(true);
-  const bounds = (model.userData.mannequinSourceBounds as THREE.Box3 | undefined)
+  const bounds = (model.userData["mannequinSourceBounds"] as THREE.Box3 | undefined)
     ?? baseGeometryBounds(model);
-  model.userData.mannequinSourceBounds = bounds;
-  const base = { ...BASE, ...(model.userData.mannequinBaseMeasurements as MannequinModelMetrics | undefined) };
+  model.userData["mannequinSourceBounds"] = bounds;
+  const base = { ...BASE, ...(model.userData["mannequinBaseMeasurements"] as MannequinModelMetrics | undefined) };
   const height = bounds.getSize(new THREE.Vector3()).y;
   if (height <= 0) throw new Error("O modelo 3D não possui altura válida.");
 

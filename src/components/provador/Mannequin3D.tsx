@@ -471,7 +471,7 @@ export function Mannequin3D({ body, audience = "feminino", product }: { body: Bo
       const hipRadius = Math.max(model.hips * 0.245, 0.215);
       const waistRadius = Math.max(model.waist * 0.218, 0.185);
       const chestRadius = Math.max(model.chest * 0.252, 0.215);
-      const shoulderRadius = Math.max(current.shoulderCm / 200 + 0.018, chestRadius * 0.94);
+      const shoulderRadius = Math.max(bodyRef.current.shoulderCm / 200 + 0.018, chestRadius * 0.94);
       const ease = selected === "blazer" ? 1.08 : selected === "camisa" ? 1.055 : 1.025;
       const torsoBottom = selected === "blazer" || selected === "camisa"
         ? model.legHeight - model.torsoHeight * 0.045

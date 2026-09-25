@@ -24,6 +24,9 @@ export type Database = {
           fit: Json
           flatters: string[]
           id: string
+          image_back_path: string
+          image_detail_path: string
+          image_front_path: string
           image_path: string
           name: string
           occasions: string[]
@@ -31,6 +34,7 @@ export type Database = {
           silhouette: string
           sizes: Json
           slug: string
+          store_url: string
           styles: string[]
           tagline: string
           updated_at: string
@@ -44,6 +48,9 @@ export type Database = {
           fit: Json
           flatters?: string[]
           id?: string
+          image_back_path?: string
+          image_detail_path?: string
+          image_front_path?: string
           image_path: string
           name: string
           occasions?: string[]
@@ -51,6 +58,7 @@ export type Database = {
           silhouette?: string
           sizes: Json
           slug: string
+          store_url?: string
           styles?: string[]
           tagline?: string
           updated_at?: string
@@ -64,6 +72,9 @@ export type Database = {
           fit?: Json
           flatters?: string[]
           id?: string
+          image_back_path?: string
+          image_detail_path?: string
+          image_front_path?: string
           image_path?: string
           name?: string
           occasions?: string[]
@@ -71,6 +82,7 @@ export type Database = {
           silhouette?: string
           sizes?: Json
           slug?: string
+          store_url?: string
           styles?: string[]
           tagline?: string
           updated_at?: string

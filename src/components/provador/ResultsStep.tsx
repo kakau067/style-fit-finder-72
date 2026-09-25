@@ -3,184 +3,28 @@ import { OCCASION_LABEL, STYLE_LABEL, garmentTypeOf, type Product } from "@/data
 import { cn } from "@/lib/utils";
 import type { RankResult, SizeFitResult } from "@/lib/sizing";
 
-const VERDICT_CLASS: Record<SizeFitResult["verdict"], string> = {
-  apertado: "border-destructive/40 text-destructive",
-  ideal: "border-primary/50 text-primary",
-  amplo: "border-foreground/30 text-secondary-foreground",
-};
-
+const VERDICT_CLASS: Record<SizeFitResult["verdict"], string> = { apertado: "border-destructive/40 text-destructive", ideal: "border-primary/50 text-primary", amplo: "border-foreground/30 text-secondary-foreground" };
 const GROUPS: { label: string; test: (product: Product) => boolean }[] = [
-  {
-    label: "Partes de cima",
-    test: (p) => garmentTypeOf(p) === "top",
-  },
-  {
-    label: "Partes de baixo",
-    test: (p) => garmentTypeOf(p) === "pants" || garmentTypeOf(p) === "skirt",
-  },
-  {
-    label: "Vestidos",
-    test: (p) => garmentTypeOf(p) === "dress",
-  },
+  { label: "Partes de cima", test: (p) => garmentTypeOf(p) === "top" },
+  { label: "Partes de baixo", test: (p) => garmentTypeOf(p) === "pants" || garmentTypeOf(p) === "skirt" },
+  { label: "Vestidos", test: (p) => garmentTypeOf(p) === "dress" },
 ];
+const brl = (value: number) => value.toLocaleString("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 0 });
 
-const brl = (value: number) =>
-  value.toLocaleString("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 0 });
+export function ResultsStep({ ranked, productsById, sizesById, onTryOn, onBack, onRestart }: { ranked: RankResult[]; productsById: Map<string, Product>; sizesById: Record<string, SizeFitResult | null>; onTryOn: (product: Product, fit: SizeFitResult) => void; onBack: () => void; onRestart: () => void; }) {
+  return <div className="space-y-8">
+    <div className="flex flex-wrap items-end justify-between gap-4"><div><Eyebrow>Marketplace</Eyebrow><h2 className="mt-3 font-serif text-3xl text-foreground sm:text-4xl">Escolha uma peça. Seu avatar faz o resto.</h2><p className="mt-2 max-w-2xl text-sm text-secondary-foreground">O catálogo já considera suas medidas, caimento, estilo e orçamento. Abra qualquer peça para provar na sua foto e conferir a representação 3D.</p></div><div className="flex gap-2"><Button variant="outline" onClick={onBack}>Editar meu avatar</Button><Button variant="ghost" onClick={onRestart}>Novo escaneamento</Button></div></div>
 
-export function ResultsStep({
-  ranked,
-  productsById,
-  sizesById,
-  onTryOn,
-  onBack,
-  onRestart,
-}: {
-  ranked: RankResult[];
-  productsById: Map<string, Product>;
-  sizesById: Record<string, SizeFitResult | null>;
-  onTryOn: (product: Product, fit: SizeFitResult) => void;
-  onBack: () => void;
-  onRestart: () => void;
-}) {
-  return (
-    <div className="space-y-8">
-      <div className="flex flex-wrap items-end justify-between gap-4">
-        <div>
-          <Eyebrow>Passo 3</Eyebrow>
-          <h2 className="mt-3 font-serif text-3xl text-foreground sm:text-4xl">
-            Suas peças, no seu tamanho
-          </h2>
-          <p className="mt-2 max-w-prose text-sm text-secondary-foreground">
-            Ordenadas pelo quanto combinam com suas medidas, seu estilo e seu orçamento.
-          </p>
-        </div>
-        <div className="flex gap-2">
-          <Button variant="outline" onClick={onBack}>
-            Ajustar medidas
-          </Button>
-          <Button variant="ghost" onClick={onRestart}>
-            Começar de novo
-          </Button>
-        </div>
-      </div>
+    <div className="grid gap-5 sm:grid-cols-2 xl:grid-cols-3">{ranked.map((result) => {
+      const product = productsById.get(result.id); const fit = sizesById[result.id]; if (!product || !fit) return null;
+      return <Panel key={result.id} className="flex flex-col overflow-hidden"><div className="relative"><img src={product.image} alt={product.name} className="aspect-[4/5] w-full object-cover"/><span className="absolute left-3 top-3 rounded-full border border-line bg-background/90 px-2.5 py-1 font-mono text-xs tracking-wider text-foreground">Seu tamanho · {fit.size}</span><span className={cn("absolute right-3 top-3 rounded-full border bg-background/90 px-2.5 py-1 text-xs", VERDICT_CLASS[fit.verdict])}>{fit.verdict}</span></div>
+      <div className="flex flex-1 flex-col gap-3 p-4"><div className="flex items-baseline justify-between gap-3"><h3 className="font-serif text-xl leading-snug text-foreground">{product.name}</h3><span className="font-mono text-sm text-foreground">{brl(product.price)}</span></div><p className="text-sm leading-relaxed text-secondary-foreground">{product.tagline}</p>
+      <div className="space-y-1.5"><div className="flex items-center justify-between font-mono text-[11px] uppercase tracking-[0.18em] text-muted-foreground"><span>compatibilidade de tamanho</span><span>{Math.round(fit.confidence * 100)}%</span></div><Meter value={fit.confidence}/></div>
+      {fit.notes.length ? <ul className="space-y-1 text-xs text-muted-foreground">{fit.notes.map((note) => <li key={note} className="border-l border-line pl-2">{note}</li>)}</ul> : null}
+      <div className="flex flex-wrap gap-1.5">{product.styles.map((tag) => <span key={tag} className="rounded-full border border-line px-2 py-0.5 text-[11px] text-muted-foreground">{STYLE_LABEL[tag] ?? tag}</span>)}{product.occasions.slice(0,2).map((occasion) => <span key={occasion} className="rounded-full bg-secondary px-2 py-0.5 text-[11px] text-secondary-foreground">{OCCASION_LABEL[occasion] ?? occasion}</span>)}</div>
+      <div className="mt-auto pt-2"><Button onClick={() => onTryOn(product, fit)} disabled={!fit.stock} className="w-full">{fit.stock ? "Vestir no meu avatar" : "Sem estoque nesse tamanho"}</Button></div></div></Panel>;
+    })}</div>
 
-      <div className="grid gap-5 sm:grid-cols-2 xl:grid-cols-3">
-        {ranked.map((result) => {
-          const product = productsById.get(result.id);
-          const fit = sizesById[result.id];
-          if (!product || !fit) return null;
-
-          return (
-            <Panel key={result.id} className="flex flex-col overflow-hidden">
-              <div className="relative">
-                <img
-                  src={product.image}
-                  alt={product.name}
-                  className="aspect-[4/5] w-full object-cover"
-                />
-                <span className="absolute left-3 top-3 rounded-full border border-line bg-background/90 px-2.5 py-1 font-mono text-xs tracking-wider text-foreground">
-                  {fit.size}
-                </span>
-                <span
-                  className={cn(
-                    "absolute right-3 top-3 rounded-full border bg-background/90 px-2.5 py-1 text-xs",
-                    VERDICT_CLASS[fit.verdict],
-                  )}
-                >
-                  {fit.verdict}
-                </span>
-              </div>
-
-              <div className="flex flex-1 flex-col gap-3 p-4">
-                <div className="flex items-baseline justify-between gap-3">
-                  <h3 className="font-serif text-xl leading-snug text-foreground">{product.name}</h3>
-                  <span className="font-mono text-sm text-foreground">{brl(product.price)}</span>
-                </div>
-                <p className="text-sm leading-relaxed text-secondary-foreground">
-                  {product.tagline}
-                </p>
-
-                <div className="space-y-1.5">
-                  <div className="flex items-center justify-between font-mono text-[11px] uppercase tracking-[0.18em] text-muted-foreground">
-                    <span>confiança do tamanho</span>
-                    <span>{Math.round(fit.confidence * 100)}%</span>
-                  </div>
-                  <Meter value={fit.confidence} />
-                </div>
-
-                {fit.notes.length ? (
-                  <ul className="space-y-1 text-xs text-muted-foreground">
-                    {fit.notes.map((note) => (
-                      <li key={note} className="border-l border-line pl-2">
-                        {note}
-                      </li>
-                    ))}
-                  </ul>
-                ) : null}
-
-                <div className="flex flex-wrap gap-1.5">
-                  {product.styles.map((tag) => (
-                    <span
-                      key={tag}
-                      className="rounded-full border border-line px-2 py-0.5 text-[11px] text-muted-foreground"
-                    >
-                      {STYLE_LABEL[tag] ?? tag}
-                    </span>
-                  ))}
-                  {product.occasions.slice(0, 2).map((occasion) => (
-                    <span
-                      key={occasion}
-                      className="rounded-full bg-secondary px-2 py-0.5 text-[11px] text-secondary-foreground"
-                    >
-                      {OCCASION_LABEL[occasion] ?? occasion}
-                    </span>
-                  ))}
-                </div>
-
-                <div className="mt-auto pt-2">
-                  <Button
-                    onClick={() => onTryOn(product, fit)}
-                    disabled={!fit.stock}
-                    className="w-full"
-                  >
-                    {fit.stock ? "Provar em mim" : "Sem estoque nesse tamanho"}
-                  </Button>
-                </div>
-              </div>
-            </Panel>
-          );
-        })}
-      </div>
-
-      <Panel className="p-5 sm:p-6">
-        <Eyebrow>Guia de tamanhos</Eyebrow>
-        <div className="mt-4 grid gap-5 sm:grid-cols-3">
-          {GROUPS.map((group) => {
-            const items = ranked
-              .map((result) => productsById.get(result.id))
-              .filter((product): product is Product => !!product && group.test(product));
-            if (!items.length) return null;
-            return (
-              <div key={group.label} className="space-y-2">
-                <p className="text-sm text-foreground">{group.label}</p>
-                <ul className="space-y-1">
-                  {items.map((product) => (
-                    <li
-                      key={product.id}
-                      className="flex items-center justify-between gap-3 text-sm text-secondary-foreground"
-                    >
-                      <span className="truncate">{product.name}</span>
-                      <span className="font-mono text-foreground">
-                        {sizesById[product.id]?.size ?? "—"}
-                      </span>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            );
-          })}
-        </div>
-      </Panel>
-    </div>
-  );
+    <Panel className="p-5 sm:p-6"><Eyebrow>Meu tamanho por categoria</Eyebrow><div className="mt-4 grid gap-5 sm:grid-cols-3">{GROUPS.map((group) => { const items = ranked.map((result) => productsById.get(result.id)).filter((product): product is Product => !!product && group.test(product)); if (!items.length) return null; return <div key={group.label} className="space-y-2"><p className="text-sm text-foreground">{group.label}</p><ul className="space-y-1">{items.map((product) => <li key={product.id} className="flex items-center justify-between gap-3 text-sm text-secondary-foreground"><span className="truncate">{product.name}</span><span className="font-mono text-foreground">{sizesById[product.id]?.size ?? "—"}</span></li>)}</ul></div>; })}</div></Panel>
+  </div>;
 }

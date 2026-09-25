@@ -20,8 +20,17 @@ function loadImage(src: string): Promise<HTMLImageElement> {
   });
 }
 
-/** Copies the original pixels outside the selected garment area. */
-export async function compositeTryOn(original: string, generated: string, region: TryOnRegion) {
+/**
+ * Normalizes the generated try-on to the original photo dimensions.
+ *
+ * The AI providers already receive strict instructions to preserve identity,
+ * pose, background and every pixel outside the garment. Re-applying the result
+ * through a fixed rectangular mask here cuts sleeves, hems and dress contours
+ * and is especially wrong for loose garments. Keep the provider's complete
+ * photorealistic result instead, while matching the original canvas so the
+ * before/after slider stays perfectly aligned.
+ */
+export async function compositeTryOn(original: string, generated: string, _region: TryOnRegion) {
   const [before, after] = await Promise.all([loadImage(original), loadImage(generated)]);
   const width = before.naturalWidth;
   const height = before.naturalHeight;
@@ -30,20 +39,7 @@ export async function compositeTryOn(original: string, generated: string, region
   result.height = height;
   const context = result.getContext("2d");
   if (!context) throw new Error("Não foi possível preparar a prova visual.");
-  context.drawImage(before, 0, 0, width, height);
 
-  const overlay = document.createElement("canvas");
-  overlay.width = width;
-  overlay.height = height;
-  const layer = overlay.getContext("2d");
-  if (!layer) throw new Error("Não foi possível preparar a prova visual.");
-  // Both layers use the original dimensions, keeping the comparison aligned.
-  layer.drawImage(after, 0, 0, width, height);
-  layer.globalCompositeOperation = "destination-in";
-  layer.filter = `blur(${Math.max(3, Math.round(width * 0.01))}px)`;
-  layer.fillStyle = "#fff";
-  layer.fillRect(region.x * width, region.y * height, region.width * width, region.height * height);
-  layer.filter = "none";
-  context.drawImage(overlay, 0, 0);
-  return result.toDataURL("image/jpeg", 0.92);
+  context.drawImage(after, 0, 0, width, height);
+  return result.toDataURL("image/jpeg", 0.94);
 }

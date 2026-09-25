@@ -477,7 +477,11 @@ export function Mannequin3D({ body, audience = "feminino", product }: { body: Bo
         ? model.legHeight - model.torsoHeight * 0.045
         : model.legHeight + model.torsoHeight * 0.06;
 
-      if (selected === "camisa" || selected === "blazer" || selected === "camiseta" || dress) {
+      if (prepared && externalModel && selected !== "basico") {
+        const parent = clothing.parent ?? clothing;
+        clothing.add(buildFittedGarment(externalModel, parent, selected, fabric));
+        prepared = null;
+      } else if (selected === "camisa" || selected === "blazer" || selected === "camiseta" || dress) {
         fittedLathe(clothing, fabric, [
           new THREE.Vector2(hipRadius * ease, torsoBottom),
           new THREE.Vector2(hipRadius * ease * 1.015, model.legHeight + model.torsoHeight * 0.10),

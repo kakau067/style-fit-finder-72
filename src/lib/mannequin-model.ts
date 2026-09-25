@@ -95,6 +95,19 @@ function fitStaticMesh(
   }
   target.needsUpdate = true;
   mesh.geometry.computeVertexNormals();
+  // Degenerate triangles (eyes, fingers, toes) produce zero/NaN normals that render black.
+  const normals = mesh.geometry.getAttribute("normal") as THREE.BufferAttribute;
+  const n = new THREE.Vector3();
+  for (let i = 0; i < normals.count; i++) {
+    n.fromBufferAttribute(normals, i);
+    const l = n.length();
+    if (!Number.isFinite(l) || l < 0.5) {
+      point.fromArray(original, i * 3).sub(center).setY(0.001);
+      n.copy(point).normalize();
+      normals.setXYZ(i, n.x, n.y, n.z);
+    }
+  }
+  normals.needsUpdate = true;
   mesh.geometry.computeBoundingBox();
   mesh.geometry.computeBoundingSphere();
 }

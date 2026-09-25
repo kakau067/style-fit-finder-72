@@ -137,8 +137,9 @@ export const Route = createFileRoute("/api/public/tryon")({
         if (typeof size !== "string" || !(SIZES as readonly string[]).includes(size)) return new Response("Tamanho inválido", { status: 400 });
         if (fitPref !== "justo" && fitPref !== "acertado" && fitPref !== "solto") return new Response("Preferência de caimento inválida", { status: 400 });
         if (renderMode !== "fast" && renderMode !== "balanced" && renderMode !== "quality") return new Response("Modo de geração inválido", { status: 400 });
-        if (provider !== "auto" && provider !== "gemini") return new Response("Serviço de prova inválido", { status: 400 });
-        const selectedProvider = provider === "gemini" || preferredProvider === "gemini" ? "gemini" : "auto";
+        if (provider !== "auto" && provider !== "gemini" && provider !== "fal") return new Response("Serviço de prova inválido", { status: 400 });
+        const selectedProvider = provider === "gemini" || preferredProvider === "gemini" ? "gemini" : provider === "fal" ? "fal" : "auto";
+        if (selectedProvider === "fal" && !apiKey) return new Response("A prova Fal.ai precisa da chave FAL_KEY no servidor.", { status: 503 });
         if (selectedProvider === "gemini" && !geminiKey) return new Response("A prova Fit Check precisa da chave GEMINI_API_KEY no servidor.", { status: 503 });
 
         try {
@@ -147,7 +148,7 @@ export const Route = createFileRoute("/api/public/tryon")({
             const imageDataUrl = await generateGeminiTryOn(geminiKey!, photo, garment, product, fitPref, renderMode);
             return Response.json({ provider: "gemini", imageDataUrl }, { headers: { "Cache-Control": "no-store" } });
           }
-          if (apiKey) {
+          if (selectedProvider === "fal" || (selectedProvider === "auto" && apiKey)) {
             const [humanImageUrl, garmentImageUrl] = await Promise.all([
               dataUrlFromFile(photo), dataUrlFromFile(garment),
             ]);

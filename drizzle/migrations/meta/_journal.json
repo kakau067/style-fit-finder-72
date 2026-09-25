@@ -8,6 +8,13 @@
       "when": 1790097972334,
       "tag": "0000_products_and_roles",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1790339724616,
+      "tag": "0001_product_real_photos",
+      "breakpoints": true
     }
   ]
 }

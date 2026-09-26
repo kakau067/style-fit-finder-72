@@ -1,22 +1,25 @@
-# Corrigir roupas no manequim 3D e publicar
+# Validation results and next step
 
-## Objetivo
-Substituir as formas rígidas e deslocadas por roupas curvas, proporcionais e solidárias ao manequim anatômico, mantendo giro 360°, zoom e pan.
+## What was tested (no files changed)
+Test browser on the preview: "Usar foto de exemplo" -> photo analysis.
 
-## Implementação
-- Refatorar a construção das roupas em `Mannequin3D` para usar perfis radiais com `LatheGeometry`, superfícies tubulares/cápsulas arredondadas e curvas próprias por categoria.
-- Eliminar `BoxGeometry` das peças principais e das lapelas; criar lapelas curvas e mangas orientadas entre ombro, cotovelo e punho.
-- Derivar busto, cintura, quadril, ombros, entrepernas e comprimentos diretamente das medidas atuais.
-- Colocar corpo GLB e roupa sob o mesmo grupo transformado, usando um único referencial local e a transformação calculada pelo modelo preparado; isso evita peças flutuando, atrás do corpo ou escaladas duas vezes.
-- Renderizar exclusivamente a categoria do produto: tops no tronco, calça nas duas pernas, saia abaixo da cintura e vestido contínuo do ombro à barra.
-- Preservar os controles atuais de câmera e o fallback procedural caso o GLB não carregue.
-- Corrigir os erros de tipos do Three.js que atualmente impedem o preview de compilar.
+## Findings
+- **Photo -> analysis -> Measurements: still blocked.** The analysis step returns the exact error:
+  `AI gateway failed [402]: payment_required, "Not enough credits", props.requires = "top_up", retryable = false` (request_id 45636e672160dfa8d9cc7b834a276eb4).
+  The screen shows this raw message and never reaches step 2 (Measurements).
+- **Workspace balance right now:** 2.10 credits left (daily grant 2.10 of 5.00, bonus 0 of 5). This month's usage is 33.59 credits. The adjustment has not reached the AI usage yet, or it is not enough.
+- **Store products:** they load normally, with no error.
+- **Fal.ai try-on:** does not use workspace credits. In the previous test it went all the way from queue to a finished image. It still works on its own through "Provar com Fal.ai".
+- **Recommendations:** they depend on step 2, so I could not reach them through the normal flow while the 402 lasts.
+- **Build:** clean in the last check.
 
-## Validação
-- Conferir build e logs sem erros.
-- Abrir o preview em desktop e celular, validar visualmente cada categoria, enquadramento, 360°, zoom e pan.
-- Conferir que o GLB carrega e que nenhuma peça fica deslocada nas medidas padrão e em medidas alteradas.
-- Publicar a versão validada em produção e retornar o identificador da revisão disponível e o status do deploy.
+## Integrations involved
+- Photo analysis: `src/lib/provador.functions.ts` (analyzePhoto) -> `src/lib/ai-gateway.server.ts` (Lovable AI).
+- Default Lovable-AI try-on: `src/routes/api/public/tryon.ts` -> `src/lib/image-gateway.server.ts` (also needs credits).
+- Fal.ai: `src/lib/fal-tryon.server.ts` (FAL_KEY, working).
+- Fit Check / Gemini: `src/lib/gemini-tryon.server.ts` (key present; not tested live).
 
-## Nota técnica
-O ambiente gerencia o histórico do projeto internamente e não permite criar commits manualmente. Retornarei o identificador de revisão/deploy disponibilizado pela publicação; não inventarei um hash Git caso a plataforma não o exponha.
+## Proposed next step (after approval)
+1. Add credits to the workspace or raise the limit, then run the same test again.
+2. Optional code change: when analysis returns 402, show a friendly message in Portuguese and a "Preencher medidas manualmente" button to go to step 2, so the store keeps working even without credits.
+3. Once step 2 opens, validate recommendations and Fit Check.

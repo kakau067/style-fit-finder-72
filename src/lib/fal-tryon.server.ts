@@ -36,7 +36,7 @@ export function validTryOnRequest(
     try {
       const url = new URL(responseUrl);
       const escapedId = id.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-      const expectedPath = new RegExp(`/requests/${escapedId}/response/?$`);
+      const expectedPath = new RegExp(`/requests/${escapedId}(/response)?/?$`);
 
       if (
         url.protocol !== "https:" ||
@@ -137,7 +137,7 @@ export async function pollFalTryOn(
 
   if (typeof status["error"] === "string") throw new Error(status["error"]);
 
-  const result = await falJson(responseUrl || `${root}/response`, key);
+  const result = await falJson(root, key);
   const image =
     model === "fashn"
       ? (result["images"] as Array<{ url?: unknown }> | undefined)?.[0]

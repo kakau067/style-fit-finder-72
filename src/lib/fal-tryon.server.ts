@@ -100,7 +100,7 @@ export async function submitFalTryOn(
 
   const ticket = signTryOnRequest(id, key, model, responseUrl);
   if (!validTryOnRequest(id, ticket, key, model, responseUrl)) {
-    throw new Error(`O serviço retornou um endereço de resultado inválido: ${responseUrl}`);
+    throw new Error("O serviço retornou um endereço de resultado inválido.");
   }
 
   return { requestId: id, responseUrl, ticket, model };

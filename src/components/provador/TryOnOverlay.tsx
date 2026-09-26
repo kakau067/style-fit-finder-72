@@ -33,6 +33,15 @@ function waitForPoll(signal: AbortSignal): Promise<void> {
   });
 }
 
+function friendlyTryOnError(cause: unknown): string {
+  const raw = cause instanceof Error ? cause.message : String(cause ?? "");
+  if (/402|credit|payment/i.test(raw)) return "A prova visual está sem créditos no momento. Tente a opção Fal.ai ou volte mais tarde.";
+  if (/503|FAL_KEY|GEMINI_API_KEY|configure/i.test(raw)) return "Esse serviço de prova visual não está configurado na loja.";
+  if (/504|demorou|timeout/i.test(raw)) return "A geração demorou demais. Tente novamente em instantes.";
+  if (/413|grande/i.test(raw)) return "A foto é grande demais para a prova. Envie uma foto menor.";
+  return "Não conseguimos gerar a prova visual agora. Tente novamente em instantes.";
+}
+
 export function TryOnOverlay({ request, onClose }: { request: TryOnRequest; onClose: () => void }) {
   const [image, setImage] = useState<string | null>(null);
   const [done, setDone] = useState(false);
@@ -46,6 +55,15 @@ export function TryOnOverlay({ request, onClose }: { request: TryOnRequest; onCl
   const viewRef = useRef<View>("mannequin");
   const [detailImage, setDetailImage] = useState(() => request.product.images.detail !== request.product.images.front ? request.product.images.detail : request.product.images.front);
   const abortRef = useRef<AbortController | null>(null);
+  const [services, setServices] = useState<{ fal: boolean; gemini: boolean }>({ fal: false, gemini: false });
+  useEffect(() => {
+    let active = true;
+    fetch("/api/public/tryon?health=1", { cache: "no-store" })
+      .then((r) => r.json() as Promise<{ provider?: string; gemini?: boolean }>)
+      .then((h) => { if (active) setServices({ fal: h.provider === "fal_queue", gemini: Boolean(h.gemini) }); })
+      .catch(() => {});
+    return () => { active = false; };
+  }, []);
   const productPhotos = (["front", "back", "detail"] as const)
     .filter((kind, index, kinds) => kinds.findIndex((other) => request.product.images[other] === request.product.images[kind]) === index);
 
@@ -140,7 +158,7 @@ export function TryOnOverlay({ request, onClose }: { request: TryOnRequest; onCl
         await waitForPoll(controller.signal);
       }
     } catch (cause) {
-      if (!controller.signal.aborted) setError(cause instanceof Error ? cause.message : "A prova visual falhou.");
+      if (!controller.signal.aborted) setError(friendlyTryOnError(cause));
     } finally {
       if (!controller.signal.aborted) setRunning(false);
     }
@@ -217,8 +235,8 @@ export function TryOnOverlay({ request, onClose }: { request: TryOnRequest; onCl
             {request.product.storeUrl ? <a href={request.product.storeUrl} target="_blank" rel="noreferrer" className="block"><Button className="w-full">Comprar agora</Button></a> : null}
             <Button variant="outline" onClick={() => void start(true)} disabled={running} className="w-full">{running ? "Gerando…" : "Gerar de novo"}</Button>
             {!running && done ? <Button variant="outline" onClick={() => void start(false, "quality")} className="w-full">Gerar foto em alta qualidade</Button> : null}
-            {!running ? <Button variant="outline" onClick={() => void start(true, "quality", "gemini")} className="w-full">Provar com Fit Check (Gemini)</Button> : null}
-            {!running ? <Button variant="outline" onClick={() => void start(true, "quality", "fal")} className="w-full">Provar com Fal.ai</Button> : null}
+            {!running && services.gemini ? <Button variant="outline" onClick={() => void start(true, "quality", "gemini")} className="w-full">Provar com Fit Check (Gemini)</Button> : null}
+            {!running && services.fal ? <Button variant="outline" onClick={() => void start(true, "quality", "fal")} className="w-full">Provar com Fal.ai</Button> : null}
             {running ? <p className="text-xs text-muted-foreground">Você pode fechar e voltar a esta peça; a geração em andamento será retomada.</p> : null}
             <p className="text-xs leading-relaxed text-muted-foreground">A foto original é preservada fora da área da peça escolhida. Ajuste os limites se necessário; dentro dessa área, a IA pode alterar detalhes.</p>
           </div>

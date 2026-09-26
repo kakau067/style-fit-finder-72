@@ -21,6 +21,12 @@ export type PhotoResult = {
   source: "example" | "upload";
 };
 
+const MANUAL_ANALYSIS: PhotoAnalysis = {
+  height_cm: 168, weight_kg: 65, chest_cm: 92, waist_cm: 74, hips_cm: 98, shoulder_cm: 40, inseam_cm: 76,
+  body_shape: "ampulheta", undertone: "neutro", palette: ["#2F3A56", "#B5654A", "#E8DCC8", "#6B7F5E", "#1F1F1F"],
+  confidence: 0, notes: "Análise automática indisponível: informe suas medidas com a fita métrica.",
+};
+
 export function PhotoStep({ onDone }: { onDone: (result: PhotoResult) => void }) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [preview, setPreview] = useState<string | null>(null);
@@ -28,6 +34,12 @@ export function PhotoStep({ onDone }: { onDone: (result: PhotoResult) => void })
   const [error, setError] = useState<string | null>(null);
   const [dragging, setDragging] = useState(false);
   const [camera, setCamera] = useState(false);
+  const [lastPhoto, setLastPhoto] = useState<{ photoDataUrl: string; previewUrl: string; source: PhotoResult["source"] } | null>(null);
+
+  function manual() {
+    if (!lastPhoto) return;
+    onDone({ ...lastPhoto, analysis: MANUAL_ANALYSIS });
+  }
 
   async function run(file: File, source: PhotoResult["source"] = "upload") {
     setError(null);
@@ -46,11 +58,15 @@ export function PhotoStep({ onDone }: { onDone: (result: PhotoResult) => void })
         fileToPreviewURL(file),
       ]);
       setPreview(previewUrl);
+      setLastPhoto({ photoDataUrl, previewUrl, source });
       const analysis = await analyzePhoto({ data: { imageDataUrl: photoDataUrl } });
       onDone({ analysis, photoDataUrl, previewUrl, source });
     } catch (cause) {
+      const raw = cause instanceof Error ? cause.message : "";
       setError(
-        cause instanceof Error ? cause.message : "Não conseguimos analisar essa foto. Tente outra.",
+        /402|credit|payment|429|configurad/i.test(raw)
+          ? "A análise automática está indisponível no momento. Você pode preencher suas medidas manualmente e seguir normalmente."
+          : "Não conseguimos analisar essa foto automaticamente. Tente outra foto ou preencha suas medidas manualmente.",
       );
     } finally {
       setBusy(false);
@@ -139,7 +155,12 @@ export function PhotoStep({ onDone }: { onDone: (result: PhotoResult) => void })
             lendo proporções…
           </p>
         ) : null}
-        {error ? <div className="mt-4">{<ErrorNote>{error}</ErrorNote>}</div> : null}
+        {error ? (
+          <div className="mt-4 space-y-3">
+            <ErrorNote>{error}</ErrorNote>
+            {lastPhoto ? <Button onClick={manual}>Preencher medidas manualmente</Button> : null}
+          </div>
+        ) : null}
 
         <p className="mt-6 text-xs leading-relaxed text-muted-foreground">
           A foto é usada só para gerar sua estimativa e a prova visual desta sessão. Nada é salvo em

@@ -135,7 +135,7 @@ export const Route = createFileRoute("/api/public/tryon")({
         if (selectedProvider === "fal" || (selectedProvider === "auto" && apiKey)) {
           const [humanImageUrl, garmentImageUrl] = await Promise.all([dataUrlFromFile(photo), dataUrlFromFile(garment)]);
           const type = garmentTypeOf(product);
-          const queued = await submitFalTryOn(apiKey, {
+          const queued = await submitFalTryOn(apiKey!, {
             model_image: humanImageUrl, garment_image: garmentImageUrl,
             category: type === "dress" ? "one-pieces" : type === "top" ? "tops" : "bottoms",
             mode: renderMode === "fast" ? "performance" : renderMode,

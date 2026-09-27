@@ -8,3 +8,4 @@
 - [x] Fallback manual de medidas quando a análise por IA falhar (402).
 - [x] Mensagens amigáveis e botões Fit Check/Fal.ai só quando configurados.
 - [x] Validar fluxo completo no preview.
+- [x] Homologação: cores editáveis, medidas salvas, justificativas nos cards, aba Foto como padrão, aviso de manequim ilustrativo.

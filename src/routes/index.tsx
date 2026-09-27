@@ -1,7 +1,7 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
 import { useQuery } from "@tanstack/react-query";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import { PhotoStep, type PhotoResult } from "@/components/provador/PhotoStep";
 import { ProfileStep, type Profile } from "@/components/provador/ProfileStep";
@@ -68,6 +68,21 @@ function Index() {
   const [photo, setPhoto] = useState<PhotoResult | null>(null);
   const [tryOn, setTryOn] = useState<TryOnRequest | null>(null);
 
+  // Persist reviewed measurements and preferences in this browser so a reload
+  // keeps what the customer typed (photo is not stored for privacy).
+  const loaded = useRef(false);
+  useEffect(() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem("provador:v1") ?? "null") as { body?: Body; profile?: Profile } | null;
+      if (saved?.body) setBody({ ...DEFAULT_BODY, ...saved.body });
+      if (saved?.profile) setProfile({ ...DEFAULT_PROFILE, ...saved.profile });
+    } catch { /* ignore corrupted storage */ }
+    loaded.current = true;
+  }, []);
+  useEffect(() => {
+    if (loaded.current) localStorage.setItem("provador:v1", JSON.stringify({ body, profile }));
+  }, [body, profile]);
+
   const fetchProducts = useServerFn(listProducts);
   const catalogQuery = useQuery({ queryKey: ["products"], queryFn: () => fetchProducts() });
 
@@ -105,6 +120,7 @@ function Index() {
   function handlePhoto(result: PhotoResult) {
     const a = result.analysis;
     setPhoto(result);
+    if (a.confidence <= 0) { setStage(1); return; } // manual: keep current/saved measurements
     setBody({
       heightCm: a.height_cm,
       weightKg: a.weight_kg,
@@ -156,7 +172,7 @@ function Index() {
             body={body}
             profile={profile}
             photo={photo}
-            estimated
+            estimated={photo.analysis.confidence > 0}
             notes={photo.analysis.notes}
             confidence={photo.analysis.confidence}
             onBody={setBody}
@@ -169,12 +185,14 @@ function Index() {
         {stage === 2 && photo ? (
           <ResultsStep
             ranked={ranked}
+            budget={profile.budget}
             productsById={productsById}
             sizesById={sizesById}
             onTryOn={handleTryOn}
             onBack={() => setStage(1)}
             onRestart={() => {
               setPhoto(null);
+              localStorage.removeItem("provador:v1");
               setBody(DEFAULT_BODY);
               setProfile(DEFAULT_PROFILE);
               setStage(0);

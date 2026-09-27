@@ -51,8 +51,8 @@ export function TryOnOverlay({ request, onClose }: { request: TryOnRequest; onCl
   const [compare, setCompare] = useState(50);
   const [generated, setGenerated] = useState<string | null>(null);
   const [region, setRegion] = useState(() => garmentRegion(request.product));
-  const [view, setView] = useState<View>("mannequin");
-  const viewRef = useRef<View>("mannequin");
+  const [view, setView] = useState<View>("photo");
+  const viewRef = useRef<View>("photo");
   const [detailImage, setDetailImage] = useState(() => request.product.images.detail !== request.product.images.front ? request.product.images.detail : request.product.images.front);
   const abortRef = useRef<AbortController | null>(null);
   const [services, setServices] = useState<{ fal: boolean; gemini: boolean }>({ fal: false, gemini: false });
@@ -229,7 +229,7 @@ export function TryOnOverlay({ request, onClose }: { request: TryOnRequest; onCl
           <div className="space-y-4">
             <div className="grid grid-cols-3 gap-2">{productPhotos.map((kind) => <button type="button" key={kind} onClick={() => { setDetailImage(request.product.images[kind]); viewRef.current = "detail"; setView("detail"); }} aria-label={`Ampliar foto de ${ { front: "frente", back: "costas", detail: "detalhe" }[kind] } de ${request.product.name}`}><img src={request.product.images[kind]} alt="" className="aspect-square w-full rounded-lg border border-line object-cover hover:border-primary" /></button>)}</div>
             <p className="text-sm leading-relaxed text-secondary-foreground">{request.product.tagline}</p>
-            {view === "mannequin" ? <p className="text-xs leading-relaxed text-muted-foreground">Gire e aproxime o manequim para ver a forma por todos os lados. A roupa 3D representa a modelagem e cor; abra Detalhes e tecido para ver a fotografia real da peça.</p> : null}
+            {view === "mannequin" ? <p className="text-xs leading-relaxed text-muted-foreground">Visualização ilustrativa: o manequim segue suas medidas, mas a roupa 3D é uma forma simplificada com a cor da peça, não um modelo real dela. O resultado realista é a aba Foto: provar em mim; a peça real está em Detalhes e tecido.</p> : null}
             {running ? <p role="status" className="text-sm text-foreground">{phase}</p> : null}
             {error ? <ErrorNote>{error}</ErrorNote> : null}
             {request.product.storeUrl ? <a href={request.product.storeUrl} target="_blank" rel="noreferrer" className="block"><Button className="w-full">Comprar agora</Button></a> : null}

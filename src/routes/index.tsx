@@ -185,6 +185,7 @@ function Index() {
         {stage === 2 && photo ? (
           <ResultsStep
             ranked={ranked}
+            budget={profile.budget}
             productsById={productsById}
             sizesById={sizesById}
             onTryOn={handleTryOn}

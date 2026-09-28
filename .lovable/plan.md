@@ -1,25 +1,54 @@
-# Validation results and next step
+# Auditoria de erros (somente leitura) — 28/09/2026
 
-## What was tested (no files changed)
-Test browser on the preview: "Usar foto de exemplo" -> photo analysis.
+Nada foi alterado, publicado ou gerado. Nenhuma prova paga foi feita. Checkpoint GitHub indisponível (403).
 
-## Findings
-- **Photo -> analysis -> Measurements: still blocked.** The analysis step returns the exact error:
-  `AI gateway failed [402]: payment_required, "Not enough credits", props.requires = "top_up", retryable = false` (request_id 45636e672160dfa8d9cc7b834a276eb4).
-  The screen shows this raw message and never reaches step 2 (Measurements).
-- **Workspace balance right now:** 2.10 credits left (daily grant 2.10 of 5.00, bonus 0 of 5). This month's usage is 33.59 credits. The adjustment has not reached the AI usage yet, or it is not enough.
-- **Store products:** they load normally, with no error.
-- **Fal.ai try-on:** does not use workspace credits. In the previous test it went all the way from queue to a finished image. It still works on its own through "Provar com Fal.ai".
-- **Recommendations:** they depend on step 2, so I could not reach them through the normal flow while the 402 lasts.
-- **Build:** clean in the last check.
+## Verificações executadas agora
+| Item | Resultado |
+|---|---|
+| Build | OK (último registro 20:01 UTC) |
+| Typecheck | OK, 0 erros |
+| Lint | 815 erros: 814 de formatação (prettier), 1 real (`prefer-const`, variável `timer`) + 6 avisos de fast-refresh |
+| Testes automatizados | Não existem no projeto |
+| Erros de runtime/console do preview | Nenhum registrado |
+| Serviços de prova (health) | Fal.ai ativo, Gemini configurado, modo "auto" |
+| Área do Lojista | Página responde 200 |
+| Chaves no navegador | Nenhuma chave secreta no código do frontend; só a chave pública do banco |
 
-## Integrations involved
-- Photo analysis: `src/lib/provador.functions.ts` (analyzePhoto) -> `src/lib/ai-gateway.server.ts` (Lovable AI).
-- Default Lovable-AI try-on: `src/routes/api/public/tryon.ts` -> `src/lib/image-gateway.server.ts` (also needs credits).
-- Fal.ai: `src/lib/fal-tryon.server.ts` (FAL_KEY, working).
-- Fit Check / Gemini: `src/lib/gemini-tryon.server.ts` (key present; not tested live).
+## Problemas confirmados
+**ALTO — Endpoint de prova visual público e sem limite.** `src/routes/api/public/tryon.ts` aceita qualquer requisição e dispara Fal.ai/Gemini (custo por uso). Impacto: qualquer um pode gastar os créditos da loja. Correção: limite por IP/sessão e verificação de origem.
 
-## Proposed next step (after approval)
-1. Add credits to the workspace or raise the limit, then run the same test again.
-2. Optional code change: when analysis returns 402, show a friendly message in Portuguese and a "Preencher medidas manualmente" button to go to step 2, so the store keeps working even without credits.
-3. Once step 2 opens, validate recommendations and Fit Check.
+**MÉDIO — Mensagens técnicas vazam.** O mesmo endpoint devolve textos com nomes de chaves (`FAL_KEY`, `GEMINI_API_KEY`) e trechos da resposta do provedor (até 250 caracteres). A tela traduz os casos comuns, mas casos novos podem aparecer crus. Correção: devolver códigos neutros e registrar o detalhe só no servidor.
+
+**MÉDIO — Health expõe configuração.** `?health` revela quais provedores estão ativos. Baixo risco, mas desnecessário em público.
+
+**BAIXO — Lint quebrado.** 814 correções automáticas de formatação + 1 `const`. Não afeta o usuário.
+
+**BAIXO — Sem testes automatizados.** Regressões só são pegas manualmente (ex.: ranking de preferências e cálculo de tamanho em `src/lib/sizing.ts`).
+
+## Limitações externas (não são bugs)
+- Análise automática da foto: depende de créditos Lovable AI (último teste: 402). O fallback manual funciona.
+- Prova padrão Lovable AI: também depende de créditos; o modo "auto" usa Fal.ai primeiro, então hoje não é acionada.
+- Gemini/Fit Check: configurado, nunca testado ao vivo.
+
+## Status por fluxo (última validação no navegador, rodada anterior; não repetida agora para não gastar créditos)
+- Foto (exemplo/upload) + fallback manual: OK. Câmera: não testável no navegador de teste.
+- Medidas editáveis e salvas localmente: OK.
+- Preferências mudam o ranking (estilo, cor, orçamento): OK.
+- Imagens do catálogo e cards: OK.
+- 3 abas do modal + Escape: OK.
+- Fal.ai real: OK (antes/depois).
+- Manequim 360°: ilustrativo, rotulado como tal: OK.
+- Celular: NÃO testado.
+- Cadastro novo no painel do lojista: NÃO testado (evitado para não criar dados).
+
+## Divergências UI x implementação
+- "Nada é salvo em servidor" (tela da foto): verdadeiro para a foto, mas ela é enviada ao provedor externo de IA — vale deixar explícito.
+- Manequim 360° não mostra a roupa real (já avisado na tela).
+
+## Prioridades
+- **P0:** proteger o endpoint de prova visual (limite de uso).
+- **P1:** remover detalhes técnicos das respostas; esconder health; testar no celular; testar Gemini uma vez.
+- **P2:** corrigir lint; criar testes para tamanho/ranking; ajustar texto sobre privacidade da foto.
+
+## Próximo passo sugerido (após aprovação)
+Implementar P0 e P1 sem mudar o visual, depois validar build e jornada no navegador.
